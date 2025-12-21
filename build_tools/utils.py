@@ -254,7 +254,7 @@ def get_cuda_include_dirs() -> Tuple[str, str]:
 @functools.lru_cache(maxsize=None)
 def skip_cuda_build() -> bool:
     """Check if CUDA build should be skipped (for AMD/ROCm or pure FL backend)"""
-    return bool(int(os.getenv("TE_FL_SKIP_CUDA_BUILD", "0")))
+    return bool(int(os.getenv("TE_FL_SKIP_CUDA", "0")))
 
 
 @functools.lru_cache(maxsize=None)

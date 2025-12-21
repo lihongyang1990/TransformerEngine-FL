@@ -18,22 +18,92 @@ import sysconfig
 from typing import Optional, Tuple
 
 
-def _skip_cuda_build() -> bool:
+def skip_cuda_build() -> bool:
     """Check if CUDA build was skipped (FL-only mode)."""
-    return bool(int(os.environ.get("TE_FL_SKIP_CUDA_BUILD", "0")))
+    return bool(int(os.environ.get("TE_FL_SKIP_CUDA", "0")))
 
 
-# Register stub module for transformer_engine_torch if in FL-only mode
-# This must happen before any other module tries to import transformer_engine_torch
-if _skip_cuda_build() and "transformer_engine_torch" not in sys.modules:
-    # Dynamically create and register the stub module
-    import importlib.util
-    _stub_path = Path(__file__).parent.parent / "pytorch" / "_tex_stub.py"
-    if _stub_path.exists():
-        _spec = importlib.util.spec_from_file_location("transformer_engine_torch", _stub_path)
-        _tex_stub = importlib.util.module_from_spec(_spec)
-        sys.modules["transformer_engine_torch"] = _tex_stub
-        _spec.loader.exec_module(_tex_stub)
+# Always load plugins system to provide unified interface
+# The registry will auto-select the appropriate backend (nvidia, flaggems, etc.)
+import importlib.util
+
+# Load modules in order: base -> registry -> backends -> __init__
+_plugins_dir = Path(__file__).parent.parent / "plugins"
+_tex_interface_dir = _plugins_dir / "tex_interface"
+
+def _load_module_from_path(name: str, path: Path):
+    """Load a module directly from file path."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+# Load base module first
+_base_module = _load_module_from_path(
+    "transformer_engine.plugins.tex_interface.base",
+    _tex_interface_dir / "base.py"
+)
+# Also register under short name for imports within the package
+sys.modules["tex_interface.base"] = _base_module
+
+# Load registry module
+_registry_module = _load_module_from_path(
+    "transformer_engine.plugins.tex_interface.registry",
+    _tex_interface_dir / "registry.py"
+)
+sys.modules["tex_interface.registry"] = _registry_module
+
+# Load logger and decorators before backends (to avoid circular imports)
+# Backends use relative imports like "from ...decorators import DEBUG"
+# We need to pre-load these modules so the relative imports work correctly
+_logger_module = _load_module_from_path(
+    "transformer_engine.plugins.tex_interface.logger",
+    _tex_interface_dir / "logger.py"
+)
+sys.modules["tex_interface.logger"] = _logger_module
+
+_decorators_module = _load_module_from_path(
+    "transformer_engine.plugins.tex_interface.decorators",
+    _tex_interface_dir / "decorators.py"
+)
+sys.modules["tex_interface.decorators"] = _decorators_module
+
+# Also register parent packages to make relative imports work
+# When torch_backend.py does "from ...decorators import DEBUG", Python needs
+# the parent package hierarchy to exist in sys.modules
+if "transformer_engine.plugins" not in sys.modules:
+    import types
+    _plugins_pkg = types.ModuleType("transformer_engine.plugins")
+    _plugins_pkg.__path__ = [str(_plugins_dir)]
+    sys.modules["transformer_engine.plugins"] = _plugins_pkg
+
+if "transformer_engine.plugins.tex_interface" not in sys.modules:
+    import types
+    _tex_pkg = types.ModuleType("transformer_engine.plugins.tex_interface")
+    _tex_pkg.__path__ = [str(_tex_interface_dir)]
+    sys.modules["transformer_engine.plugins.tex_interface"] = _tex_pkg
+    # Add submodules
+    _tex_pkg.base = _base_module
+    _tex_pkg.registry = _registry_module
+    _tex_pkg.logger = _logger_module
+    _tex_pkg.decorators = _decorators_module
+
+# Load backends init to register all available backends
+_backends_init = _tex_interface_dir / "backends" / "__init__.py"
+if _backends_init.exists():
+    _backends_module = _load_module_from_path(
+        "transformer_engine.plugins.tex_interface.backends",
+        _backends_init
+    )
+    sys.modules["tex_interface.backends"] = _backends_module
+
+# Get the tex module from registry and register as transformer_engine_torch
+# The registry will automatically select the best available backend:
+# - If CUDA is compiled and available: nvidia backend (wraps transformer_engine_torch native lib)
+# - If TE_FL_SKIP_CUDA=1: flaggems backend (uses FlagGems/Triton)
+_tex_module = _registry_module.get_tex_module()
+sys.modules["transformer_engine_torch"] = _tex_module
 
 
 @functools.lru_cache(maxsize=None)
@@ -164,50 +234,36 @@ def get_te_core_package_info() -> Tuple[bool, str, str]:
 @functools.lru_cache(maxsize=None)
 def load_framework_extension(framework: str) -> None:
     """
-    Load shared library with Transformer Engine framework bindings
-    and check verify correctness if installed via PyPI.
+    Load shared library with Transformer Engine framework bindings.
+
+    For PyTorch: The native module is now named transformer_engine_torch_nv,
+    and transformer_engine_torch is provided by the plugins system.
+    This function is kept for backward compatibility but does nothing for torch.
     """
 
     # Skip loading native extensions if CUDA build was skipped (FL-only mode)
-    if _skip_cuda_build():
+    if skip_cuda_build():
         return
 
     # Supported frameworks.
     assert framework in ("jax", "torch"), f"Unsupported framework {framework}"
 
-    # Name of the framework extension library.
+    # For torch: plugins system already handles transformer_engine_torch
+    # The native module is transformer_engine_torch_nv (imported by NVIDIA backend)
+    if framework == "torch":
+        return  # Nothing to do, plugins system handles this
+
+    # For jax: load the native module as before
     module_name = f"transformer_engine_{framework}"
 
-    # Name of the pip extra dependency for framework extensions from PyPI.
-    extra_dep_name = module_name
-    if framework == "torch":
-        extra_dep_name = "pytorch"
+    # Skip if already loaded
+    if module_name in sys.modules:
+        return
 
-    # Find the TE packages. The core and framework packages can only be installed via PyPI.
-    # For the `transformer-engine` package, we need to check explicity.
-    te_core_installed, te_core_package_name, te_core_version = get_te_core_package_info()
-    te_framework_installed = _is_package_installed(module_name)
     te_installed = _is_package_installed("transformer_engine")
-    te_installed_via_pypi = _is_package_installed_from_wheel("transformer_engine")
-
     assert te_installed, "Could not find `transformer_engine`."
 
-    # If the framework extension pip package is installed, it means that TE is installed via
-    # PyPI. For this case we need to make sure that the metapackage, the core lib, and framework
-    # extension are all installed via PyPI and have matching versions.
-    if te_framework_installed:
-        assert te_installed_via_pypi, "Could not find `transformer-engine` PyPI package."
-        assert te_core_installed, "Could not find TE core package `transformer-engine-cu*`."
-
-        assert version(module_name) == version("transformer-engine") == te_core_version, (
-            "Transformer Engine package version mismatch. Found"
-            f" {module_name} v{version(module_name)}, transformer-engine"
-            f" v{version('transformer-engine')}, and {te_core_package_name}"
-            f" v{te_core_version}. Install transformer-engine using "
-            f"'pip3 install --no-build-isolation transformer-engine[{extra_dep_name}]==VERSION'"
-        )
-
-    # After all checks are completed, load the shared object file.
+    # Load the shared object file for jax
     spec = importlib.util.spec_from_file_location(module_name, _get_shared_object_file(framework))
     solib = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = solib
@@ -218,7 +274,7 @@ def sanity_checks_for_pypi_installation() -> None:
     """Ensure that package is installed correctly if using PyPI."""
 
     # Skip sanity checks if CUDA build was skipped (FL-only mode)
-    if _skip_cuda_build():
+    if skip_cuda_build():
         return
 
     te_core_installed, te_core_package_name, te_core_version = get_te_core_package_info()
@@ -418,7 +474,7 @@ if "NVTE_PROJECT_BUILDING" not in os.environ or bool(int(os.getenv("NVTE_RELEASE
     sanity_checks_for_pypi_installation()
 
     # Skip loading CUDA libraries if CUDA build was skipped (FL-only mode)
-    if not _skip_cuda_build():
+    if not skip_cuda_build():
         _CUDNN_LIB_CTYPES = _load_cudnn()
         _NVRTC_LIB_CTYPES = _load_nvrtc()
         _CURAND_LIB_CTYPES = _load_curand()
