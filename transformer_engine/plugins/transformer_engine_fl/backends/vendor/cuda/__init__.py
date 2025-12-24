@@ -2,4 +2,6 @@
 #
 # See LICENSE for license information.
 
-__all__ = []
+from .cuda import CUDABackend
+
+__all__ = ["CUDABackend"]

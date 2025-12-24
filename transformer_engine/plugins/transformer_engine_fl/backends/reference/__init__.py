@@ -2,4 +2,6 @@
 #
 # See LICENSE for license information.
 
-__all__ = []
+from .reference import ReferenceBackend
+
+__all__ = ["ReferenceBackend"]

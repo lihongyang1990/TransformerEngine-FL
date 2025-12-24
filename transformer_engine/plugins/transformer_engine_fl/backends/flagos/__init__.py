@@ -2,4 +2,6 @@
 #
 # See LICENSE for license information.
 
-__all__ = []
+from .flagos import FlagOSBackend
+
+__all__ = ["FlagOSBackend"]

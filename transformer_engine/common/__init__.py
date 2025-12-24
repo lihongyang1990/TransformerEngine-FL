@@ -22,89 +22,12 @@ def skip_cuda_build() -> bool:
     """Check if CUDA build was skipped (FL-only mode)."""
     return bool(int(os.environ.get("TE_FL_SKIP_CUDA", "0")))
 
-
-# Always load plugins system to provide unified interface
-# The registry will auto-select the appropriate backend (nvidia, flaggems, etc.)
-import importlib.util
-
-# Load modules in order: base -> registry -> backends -> __init__
-_plugins_dir = Path(__file__).parent.parent / "plugins"
-_tex_interface_dir = _plugins_dir / "tex_interface"
-
-def _load_module_from_path(name: str, path: Path):
-    """Load a module directly from file path."""
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-# Load base module first
-_base_module = _load_module_from_path(
-    "transformer_engine.plugins.tex_interface.base",
-    _tex_interface_dir / "base.py"
-)
-# Also register under short name for imports within the package
-sys.modules["tex_interface.base"] = _base_module
-
-# Load registry module
-_registry_module = _load_module_from_path(
-    "transformer_engine.plugins.tex_interface.registry",
-    _tex_interface_dir / "registry.py"
-)
-sys.modules["tex_interface.registry"] = _registry_module
-
-# Load logger and decorators before backends (to avoid circular imports)
-# Backends use relative imports like "from ...decorators import DEBUG"
-# We need to pre-load these modules so the relative imports work correctly
-_logger_module = _load_module_from_path(
-    "transformer_engine.plugins.tex_interface.logger",
-    _tex_interface_dir / "logger.py"
-)
-sys.modules["tex_interface.logger"] = _logger_module
-
-_decorators_module = _load_module_from_path(
-    "transformer_engine.plugins.tex_interface.decorators",
-    _tex_interface_dir / "decorators.py"
-)
-sys.modules["tex_interface.decorators"] = _decorators_module
-
-# Also register parent packages to make relative imports work
-# When torch_backend.py does "from ...decorators import DEBUG", Python needs
-# the parent package hierarchy to exist in sys.modules
-if "transformer_engine.plugins" not in sys.modules:
-    import types
-    _plugins_pkg = types.ModuleType("transformer_engine.plugins")
-    _plugins_pkg.__path__ = [str(_plugins_dir)]
-    sys.modules["transformer_engine.plugins"] = _plugins_pkg
-
-if "transformer_engine.plugins.tex_interface" not in sys.modules:
-    import types
-    _tex_pkg = types.ModuleType("transformer_engine.plugins.tex_interface")
-    _tex_pkg.__path__ = [str(_tex_interface_dir)]
-    sys.modules["transformer_engine.plugins.tex_interface"] = _tex_pkg
-    # Add submodules
-    _tex_pkg.base = _base_module
-    _tex_pkg.registry = _registry_module
-    _tex_pkg.logger = _logger_module
-    _tex_pkg.decorators = _decorators_module
-
-# Load backends init to register all available backends
-_backends_init = _tex_interface_dir / "backends" / "__init__.py"
-if _backends_init.exists():
-    _backends_module = _load_module_from_path(
-        "transformer_engine.plugins.tex_interface.backends",
-        _backends_init
-    )
-    sys.modules["tex_interface.backends"] = _backends_module
-
-# Get the tex module from registry and register as transformer_engine_torch
-# The registry will automatically select the best available backend:
-# - If CUDA is compiled and available: nvidia backend (wraps transformer_engine_torch native lib)
-# - If TE_FL_SKIP_CUDA=1: flaggems backend (uses FlagGems/Triton)
-_tex_module = _registry_module.get_tex_module()
-sys.modules["transformer_engine_torch"] = _tex_module
-
+# Load plugins system - this handles module registration and backend initialization
+# The _module_setup inside transformer_engine_fl will:
+# 1. Register modules under both full and short names for relative imports
+# 2. Load all available backends (flagos, reference, vendor/cuda, etc.)
+# 3. Register transformer_engine_torch module from the selected backend
+import transformer_engine.plugins.transformer_engine_fl  # noqa: F401
 
 @functools.lru_cache(maxsize=None)
 def _is_package_installed(package) -> bool:
