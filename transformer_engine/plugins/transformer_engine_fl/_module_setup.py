@@ -18,8 +18,8 @@ def setup_module_aliases():
     Register transformer_engine_fl modules under both full and short names.
 
     This allows backends to use relative imports like:
-        from ...base import TEFLBackendBase
-        from ...registry import register_backend
+        from ...ops import TEFLBackendBase
+        from ...types import OpImpl, BackendImplKind
 
     And ensures they work correctly regardless of how the module is imported.
     """
@@ -33,17 +33,13 @@ def setup_module_aliases():
 
     # List of submodules to register
     submodule_names = [
-        "base",
-        "registry",
+        "ops",
         "logger",
-        "decorators",
         "types",
         "logger_manager",
-        "policy_manager",
-        "backend_registry",
-        "operator_manager",
         "policy",
         "operator_registry",
+        "registry",
         "discovery",
     ]
 
@@ -72,7 +68,7 @@ def setup_module_aliases():
 
 def register_as_transformer_engine_torch():
     """
-    Register the tefl module from registry as transformer_engine_torch.
+    Register the tefl module as transformer_engine_torch.
 
     This provides backward compatibility with code that expects
     transformer_engine_torch to be available.
@@ -82,16 +78,13 @@ def register_as_transformer_engine_torch():
         return
 
     try:
-        from .registry import get_tefl_module
+        from .ops import get_tefl_module
         tefl_module = get_tefl_module()
         sys.modules["transformer_engine_torch"] = tefl_module
     except Exception as e:
-        # If we can't get the tefl module, register a placeholder or warn
-        import os
-        if os.environ.get("TE_FL_DEBUG", "0") == "1":
-            import traceback
-            print(f"[TEFL Setup] Warning: Could not register transformer_engine_torch: {e}")
-            traceback.print_exc()
+        import traceback
+        print(f"[TEFL Setup] Warning: Could not register transformer_engine_torch: {e}")
+        traceback.print_exc()
 
         # Create a minimal placeholder module to avoid import errors
         # This allows the system to at least import without crashing

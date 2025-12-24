@@ -3,15 +3,11 @@
 # See LICENSE for license information.
 
 import os
-import sys
 from typing import Any, List, Optional, Tuple, Union
 
 import torch
 
-from ...base import TEFLBackendBase, FP8TensorMeta, NVTE_Fused_Attn_Backend
-from ...registry import register_backend
-from ...decorators import with_fallback, DEBUG
-from ...logger import print_once
+from ...ops import TEFLBackendBase, FP8TensorMeta, NVTE_Fused_Attn_Backend
 
 from .impl import (
     rmsnorm_fwd_fl, rmsnorm_bwd_fl,
@@ -20,12 +16,10 @@ from .impl import (
     generic_gemm_fl
 )
 
-
 def _check_flagos_available() -> bool:
     return True
 
 
-@register_backend
 class FlagOSBackend(TEFLBackendBase):
     NAME = "flagos"
     PRIORITY = 150
@@ -33,53 +27,6 @@ class FlagOSBackend(TEFLBackendBase):
     @staticmethod
     def check_available() -> bool:
         return _check_flagos_available()
-
-    def __init__(self):
-        self._fallback_backend = None
-        self._fallback_name = os.environ.get("TE_FALLBACK_BACKEND", "reference")
-
-    def _get_fallback_backend(self) -> Optional[TEFLBackendBase]:
-        if self._fallback_backend is None:
-            try:
-                _reg = (
-                    sys.modules.get("transformer_engine_fl.registry") or
-                    sys.modules.get("transformer_engine.plugins.transformer_engine_fl.registry")
-                )
-                if _reg is not None:
-                    get_backend = _reg.get_backend
-                    list_backends = _reg.list_backends
-                else:
-                    from ..registry import get_backend, list_backends
-
-                try:
-                    self._fallback_backend = get_backend(self._fallback_name)
-                    if DEBUG:
-                        print_once(f"[FlagOS] Initialized fallback backend: {self._fallback_name}")
-                except Exception:
-                    available = list_backends()
-                    candidates = [b for b in available if b != "flagos"]
-                    if DEBUG:
-                        print_once(f"[FlagOS] Fallback '{self._fallback_name}' not found, available: {candidates}")
-                    for candidate in candidates:
-                        try:
-                            self._fallback_backend = get_backend(candidate)
-                            self._fallback_name = candidate
-                            if DEBUG:
-                                print_once(f"[FlagOS] Using fallback backend: {candidate}")
-                            break
-                        except Exception:
-                            continue
-            except Exception as e:
-                if DEBUG:
-                    print_once(f"[FlagOS] Failed to initialize fallback backend: {e}")
-                self._fallback_backend = None
-        return self._fallback_backend
-
-    def set_fallback_backend(self, name: str):
-        self._fallback_name = name
-        self._fallback_backend = None
-        if DEBUG:
-            print_once(f"[FlagOS] Fallback backend set to: {name}")
 
     @property
     def name(self) -> str:
@@ -99,7 +46,6 @@ class FlagOSBackend(TEFLBackendBase):
         from .attention.dot_product_attention.backends import FlashAttentionFL
         return FlashAttentionFL
 
-    @with_fallback
     def generic_gemm(
         self,
         A: torch.Tensor,
@@ -134,7 +80,6 @@ class FlagOSBackend(TEFLBackendBase):
             alpha=alpha, beta=beta
         )
 
-    @with_fallback
     def rmsnorm_fwd(
         self,
         input: torch.Tensor,
@@ -152,7 +97,6 @@ class FlagOSBackend(TEFLBackendBase):
             sm_margin=sm_margin, zero_centered_gamma=zero_centered_gamma,
         )
 
-    @with_fallback
     def rmsnorm_bwd(
         self,
         dy: torch.Tensor,
@@ -168,7 +112,6 @@ class FlagOSBackend(TEFLBackendBase):
             sm_margin=sm_margin, zero_centered_gamma=zero_centered_gamma, eps=eps,
         )
 
-    @with_fallback
     def multi_tensor_scale(
         self,
         chunk_size: int,
@@ -178,7 +121,6 @@ class FlagOSBackend(TEFLBackendBase):
     ) -> None:
         return multi_tensor_scale_fl(chunk_size, noop_flag, tensor_lists, scale)
 
-    @with_fallback
     def multi_tensor_l2norm(
         self,
         chunk_size: int,
@@ -189,7 +131,6 @@ class FlagOSBackend(TEFLBackendBase):
         result, _ = multi_tensor_l2_norm_fl(chunk_size, noop_flag, tensor_lists, per_tensor)
         return result
 
-    @with_fallback
     def multi_tensor_adam(
         self,
         chunk_size: int = None,

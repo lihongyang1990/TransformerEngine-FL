@@ -6,10 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from ....base import TEFLBackendBase, FP8TensorMeta
-from ....registry import register_backend
-from ....decorators import DEBUG
-from ....logger import debug_print_once
+from ....ops import TEFLBackendBase, FP8TensorMeta
 
 def _load_cuda_libs():
     import ctypes
@@ -78,8 +75,7 @@ def _load_cuda_libs():
                     return True
         return False
     except Exception as e:
-        if os.environ.get("TE_FL_DEBUG", "0") == "1":
-            print(f"[CUDA] Failed to load CUDA libs: {e}")
+        print(f"[CUDA] Failed to load CUDA libs: {e}")
         return False
 
 _cuda_libs_loaded = False
@@ -98,13 +94,11 @@ def _check_cuda_available() -> bool:
     try:
         from ...._build_config import SKIP_CUDA_BUILD
         if SKIP_CUDA_BUILD:
-            if os.environ.get("TE_FL_DEBUG", "0") == "1":
-                print("[CUDA] Disabled: CUDA was skipped at build time")
+            print("[CUDA] Disabled: CUDA was skipped at build time")
             return False
     except ImportError:
         if bool(int(os.environ.get("TE_FL_SKIP_CUDA", "0"))):
-            if os.environ.get("TE_FL_DEBUG", "0") == "1":
-                print("[CUDA] Disabled: TE_FL_SKIP_CUDA=1")
+            print("[CUDA] Disabled: TE_FL_SKIP_CUDA=1")
             return False
 
     try:
@@ -113,8 +107,7 @@ def _check_cuda_available() -> bool:
         import transformer_engine_torch_nv
         return True
     except (ImportError, OSError) as e:
-        if os.environ.get("TE_FL_DEBUG", "0") == "1":
-            print(f"[CUDA] Import failed: {e}")
+        print(f"[CUDA] Import failed: {e}")
         return False
 
 def _get_tex():
@@ -131,7 +124,7 @@ def _torch_dtype_to_te_dtype(torch_dtype, tex_module):
         return torch_dtype
 
     if hasattr(torch_dtype, 'name') and hasattr(torch_dtype, 'value'):
-        from transformer_engine.plugins.transformer_engine_fl.base import DType as PyDType
+        from transformer_engine.plugins.transformer_engine_fl.ops import DType as PyDType
         if isinstance(torch_dtype, PyDType):
             dtype_name = torch_dtype.name
             if hasattr(NativeDType, dtype_name):
@@ -152,27 +145,16 @@ def _torch_dtype_to_te_dtype(torch_dtype, tex_module):
 
     return dtype_map.get(torch_dtype, torch_dtype)
 
-
-def debug_print(func_name: str, *args, **kwargs):
-    if DEBUG:
-        debug_print_once(func_name, "CUDABackend", *args, **kwargs)
-
-
 def _convert_dtype_params(func):
     import functools
     import inspect
     import os
 
-    DEBUG = False
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         dtype_params = ['otype', 'output_dtype', 'bias_type']
 
-        if DEBUG:
-            print(f'[DTYPE DEBUG] {func.__name__} called')
-            print(f'  kwargs before: {[(k, v, type(v)) for k, v in kwargs.items() if k in dtype_params]}')
-
-        from transformer_engine.plugins.transformer_engine_fl.base import DType as PyDType
+        from transformer_engine.plugins.transformer_engine_fl.ops import DType as PyDType
 
         def needs_conversion(val):
             return isinstance(val, torch.dtype) or isinstance(val, PyDType)
@@ -180,35 +162,23 @@ def _convert_dtype_params(func):
         for param_name in dtype_params:
             if param_name in kwargs:
                 value = kwargs[param_name]
-                if DEBUG:
-                    print(f'  Checking kwargs[{param_name}]: {value}, type={type(value)}, needs conversion? {needs_conversion(value)}')
                 if needs_conversion(value):
                     converted = self._to_te_dtype(value)
                     kwargs[param_name] = converted
-                    if DEBUG:
-                        print(f'  Converted kwargs[{param_name}]: {value} -> {converted}')
 
         sig = inspect.signature(func)
         param_names = list(sig.parameters.keys())[1:]
 
         args_list = list(args)
         for i, (param_name, arg_value) in enumerate(zip(param_names, args_list)):
-            if DEBUG and param_name in dtype_params:
-                print(f'  Checking args[{i}] ({param_name}): {arg_value}, type={type(arg_value)}, needs conversion? {needs_conversion(arg_value)}')
             if param_name in dtype_params and needs_conversion(arg_value):
                 converted = self._to_te_dtype(arg_value)
                 args_list[i] = converted
-                if DEBUG:
-                    print(f'  Converted args[{i}] ({param_name}): {arg_value} -> {converted}')
-
-        if DEBUG:
-            print(f'  kwargs after: {[(k, v, type(v)) for k, v in kwargs.items() if k in dtype_params]}')
 
         return func(self, *args_list, **kwargs)
 
     return wrapper
 
-@register_backend
 class CUDABackend(TEFLBackendBase):
     NAME = "cuda"
     PRIORITY = 100
@@ -313,8 +283,6 @@ class CUDABackend(TEFLBackendBase):
         )
 
     def te_general_grouped_gemm(self, *args, **kwargs) -> Any:
-        if DEBUG:
-            debug_print("te_general_grouped_gemm", *args, **kwargs)
         tex = self._get_tex()
         return tex.te_general_grouped_gemm(*args, **kwargs)
 
@@ -443,8 +411,6 @@ class CUDABackend(TEFLBackendBase):
         sm_margin: int,
         zero_centered_gamma: bool,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if DEBUG:
-            debug_print("layernorm_fwd", input, weight, bias)
         tex = self._get_tex()
 
         orig_shape = input.shape
@@ -469,8 +435,6 @@ class CUDABackend(TEFLBackendBase):
         sm_margin: int = 0,
         zero_centered_gamma: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if DEBUG:
-            debug_print("layernorm_bwd", dy, x, gamma)
         tex = self._get_tex()
 
         orig_shape = dy.shape
@@ -496,8 +460,6 @@ class CUDABackend(TEFLBackendBase):
         sm_margin: int,
         zero_centered_gamma: bool,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
-        if DEBUG:
-            debug_print("rmsnorm_fwd", input, weight)
         tex = self._get_tex()
 
         orig_shape = input.shape
@@ -524,8 +486,6 @@ class CUDABackend(TEFLBackendBase):
         zero_centered_gamma: bool = False,
         eps: float = 1e-5,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        if DEBUG:
-            debug_print("rmsnorm_bwd", dy, x, gamma)
         tex = self._get_tex()
 
         orig_shape = dy.shape
@@ -642,8 +602,6 @@ class CUDABackend(TEFLBackendBase):
         return tex.scaled_aligned_causal_masked_softmax_backward(output_grad, softmax_output, scale)
 
     def get_fused_attn_backend(self, *args, **kwargs) -> int:
-        if DEBUG:
-            debug_print("get_fused_attn_backend", *args, **kwargs)
         tex = self._get_tex()
 
         args_list = list(args)
@@ -692,8 +650,6 @@ class CUDABackend(TEFLBackendBase):
         return tex.get_fused_attn_backend(*args_list, **kwargs)
 
     def fused_attn_fwd(self, *args, **kwargs) -> Any:
-        if DEBUG:
-            debug_print("fused_attn_fwd", *args, **kwargs)
         tex = self._get_tex()
 
         def convert_enum(py_enum, native_enum_class):
@@ -720,8 +676,6 @@ class CUDABackend(TEFLBackendBase):
         return tex.fused_attn_fwd(*args_list, **kwargs)
 
     def fused_attn_bwd(self, *args, **kwargs) -> Any:
-        if DEBUG:
-            debug_print("fused_attn_bwd", *args, **kwargs)
         tex = self._get_tex()
 
         def convert_enum(py_enum, native_enum_class):

@@ -5,14 +5,9 @@
 from .transformer_engine_fl import (
     TEFLBackendBase,
     TEFLModule,
-    register_backend,
-    get_backend,
-    get_current_backend,
-    set_backend,
-    list_backends,
+    get_tefl_module as _get_tefl_module,
+    get_registry,
 )
-
-from .transformer_engine_fl.registry import get_tefl_module as _get_tefl_module
 
 def __getattr__(name):
     if name == "tefl":
@@ -22,10 +17,7 @@ def __getattr__(name):
 __all__ = [
     "TEFLBackendBase",
     "TEFLModule",
-    "register_backend",
-    "get_backend",
-    "get_current_backend",
-    "set_backend",
-    "list_backends",
+    "get_tefl_module",
+    "get_registry",
     "tefl",
 ]

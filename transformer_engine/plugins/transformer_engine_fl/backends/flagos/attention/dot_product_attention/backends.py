@@ -31,13 +31,10 @@ from transformer_engine.pytorch.attention.inference import InferenceParams
 
 import transformer_engine.pytorch.attention.dot_product_attention.utils as dpa_utils
 
-from transformer_engine.plugins.transformer_engine_fl.flash_attention_base import FlashAttentionBase
-from transformer_engine.plugins.transformer_engine_fl.logger import print_once
+from transformer_engine.plugins.transformer_engine_fl.ops import FlashAttentionBase
+from transformer_engine.plugins.transformer_engine_fl.logger_manager import print_once
 
 import flag_gems
-
-_DEBUG = os.getenv("TE_FL_DEBUG", "0") == "1"
-
 
 class AttnFuncFL(torch.autograd.Function):
     @staticmethod
@@ -78,12 +75,6 @@ class AttnFuncFL(torch.autograd.Function):
         k_permuted = k.permute(1, 2, 0, 3)
         v_permuted = v.permute(1, 2, 0, 3)
 
-        if _DEBUG:
-            print_once(f"[flagos] Calling flash_attention_forward\n"
-                      f"  args: q_shape={q_permuted.shape}, k_shape={k_permuted.shape}, "
-                      f"v_shape={v_permuted.shape}, dropout_p={dropout_p}, is_causal={is_causal}, "
-                      f"scale={attn_scale}")
-
         (out_permuted, m) = flag_gems.scaled_dot_product_attention_forward(
             q_permuted,
             k_permuted,
@@ -94,10 +85,6 @@ class AttnFuncFL(torch.autograd.Function):
             scale=attn_scale,
             enable_gqa=True,
         )
-
-        if _DEBUG:
-            print_once(f"[flagos] flash_attention_forward completed successfully\n"
-                      f"  output_shape={out_permuted.shape}")
 
         out = out_permuted.permute(2, 0, 1, 3)
         aux_ctx_tensors = [out_permuted, m]
@@ -173,12 +160,6 @@ class AttnFuncFL(torch.autograd.Function):
             q_permuted, k_permuted, v_permuted, m = map(lambda x: x.contiguous() if not x.is_contiguous() else x, (q_permuted, k_permuted, v_permuted, m))
             d_out_permuted = d_out.permute(1, 2, 0, 3).contiguous()
 
-            if _DEBUG:
-                print_once(f"[flagos] Calling flash_attention_backward\n"
-                          f"  args: d_out_shape={d_out_permuted.shape}, q_shape={q_permuted.shape}, "
-                          f"k_shape={k_permuted.shape}, v_shape={v_permuted.shape}, dropout_p={ctx.dropout_p}, "
-                          f"is_causal={ctx.is_causal}, scale={ctx.attn_scale}")
-
             dq_permuted, dk_permuted, dv_permuted = flag_gems.scaled_dot_product_attention_backward(
                 d_out_permuted,
                 q_permuted,
@@ -192,10 +173,6 @@ class AttnFuncFL(torch.autograd.Function):
                 scale=ctx.attn_scale,
                 enable_gqa=True,
             )
-
-            if _DEBUG:
-                print_once(f"[flagos] flash_attention_backward completed successfully\n"
-                          f"  dq_shape={dq_permuted.shape}, dk_shape={dk_permuted.shape}, dv_shape={dv_permuted.shape}")
 
             dq = dq_permuted.permute(2, 0, 1, 3)
             dk = dk_permuted.permute(2, 0, 1, 3)

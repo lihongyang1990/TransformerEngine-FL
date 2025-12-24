@@ -7,10 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from ...base import TEFLBackendBase, FP8TensorMeta, NVTE_Fused_Attn_Backend
-from ...registry import register_backend
-from ...decorators import DEBUG
-from ...logger import debug_print_once
+from ...ops import TEFLBackendBase, FP8TensorMeta, NVTE_Fused_Attn_Backend
 
 from .impl import (
     general_gemm_torch,
@@ -35,13 +32,6 @@ from .impl import (
     multi_tensor_adam_torch, multi_tensor_sgd_torch,
 )
 
-
-def debug_print(func_name: str, *args, **kwargs):
-    if DEBUG:
-        debug_print_once(func_name, "ReferenceBackend", *args, **kwargs)
-
-
-@register_backend
 class ReferenceBackend(TEFLBackendBase):
     NAME = "reference"
     PRIORITY = 100
@@ -97,9 +87,6 @@ class ReferenceBackend(TEFLBackendBase):
         alpha: float = 1.0,
         beta: Optional[float] = None,
     ) -> Any:
-        if DEBUG:
-            debug_print("generic_gemm", A, B, D)
-
         return general_gemm_torch(
             A=A,
             transA=transA,
@@ -127,16 +114,16 @@ class ReferenceBackend(TEFLBackendBase):
 
 
     def te_general_grouped_gemm(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("te_general_grouped_gemm - not implemented in torch backend")
+        raise NotImplementedError("te_general_grouped_gemm - not implemented in reference backend")
 
     def quantize(self, tensor: torch.Tensor, quantizer: Any, output: Optional[torch.Tensor] = None, noop: Optional[torch.Tensor] = None) -> Any:
-        raise NotImplementedError("quantize - not implemented in torch backend")
+        raise NotImplementedError("quantize - not implemented in reference backend")
 
     def dequantize(self, input: torch.Tensor, otype: torch.dtype) -> torch.Tensor:
-        raise NotImplementedError("dequantize - not implemented in torch backend")
+        raise NotImplementedError("dequantize - not implemented in reference backend")
 
     def bgrad_quantize(self, input: torch.Tensor, quantizer: Any) -> Tuple[torch.Tensor, Any]:
-        raise NotImplementedError("bgrad_quantize - not implemented in torch backend")
+        raise NotImplementedError("bgrad_quantize - not implemented in reference backend")
 
     def gelu(self, input: torch.Tensor, quantizer: Any) -> Any:
         return gelu_torch(input, quantizer)
@@ -231,9 +218,6 @@ class ReferenceBackend(TEFLBackendBase):
         sm_margin: int,
         zero_centered_gamma: bool,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if DEBUG:
-            debug_print("layernorm_fwd", input, weight)
-
         return layernorm_fwd_torch(
             input=input,
             weight=weight,
@@ -256,9 +240,6 @@ class ReferenceBackend(TEFLBackendBase):
         sm_margin: int = 0,
         zero_centered_gamma: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if DEBUG:
-            debug_print("layernorm_bwd", dy, x, gamma)
-
         return layernorm_bwd_torch(
             dy=dy,
             x=x,
@@ -280,9 +261,6 @@ class ReferenceBackend(TEFLBackendBase):
         sm_margin: int,
         zero_centered_gamma: bool,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
-        if DEBUG:
-            debug_print("rmsnorm_fwd", input, weight)
-
         return rmsnorm_fwd_torch(
             input=input,
             weight=weight,
@@ -304,9 +282,6 @@ class ReferenceBackend(TEFLBackendBase):
         zero_centered_gamma: bool = False,
         eps: float = 1e-5,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        if DEBUG:
-            debug_print("rmsnorm_bwd", dy, x, gamma)
-
         return rmsnorm_bwd_torch(
             dy=dy,
             x=x,
@@ -318,25 +293,25 @@ class ReferenceBackend(TEFLBackendBase):
         )
 
     def rmsnorm_bwd_add(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("rmsnorm_bwd_add - not implemented in torch backend")
+        raise NotImplementedError("rmsnorm_bwd_add - not implemented in reference backend")
 
     def multi_tensor_quantize(self, tensor_list: List[torch.Tensor], quantizer_list: List[Any]) -> List[Any]:
-        raise NotImplementedError("multi_tensor_quantize - not implemented in torch backend")
+        raise NotImplementedError("multi_tensor_quantize - not implemented in reference backend")
 
     def split_quantize(self, tensor: torch.Tensor, split_sections: List[int], quantizer_list: List[Any]) -> List[Any]:
-        raise NotImplementedError("split_quantize - not implemented in torch backend")
+        raise NotImplementedError("split_quantize - not implemented in reference backend")
 
     def moe_permute_fwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("moe_permute_fwd - not implemented in torch backend")
+        raise NotImplementedError("moe_permute_fwd - not implemented in reference backend")
 
     def moe_permute_bwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("moe_permute_bwd - not implemented in torch backend")
+        raise NotImplementedError("moe_permute_bwd - not implemented in reference backend")
 
     def moe_unpermute_fwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("moe_unpermute_fwd - not implemented in torch backend")
+        raise NotImplementedError("moe_unpermute_fwd - not implemented in reference backend")
 
     def moe_unpermute_bwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("moe_unpermute_bwd - not implemented in torch backend")
+        raise NotImplementedError("moe_unpermute_bwd - not implemented in reference backend")
 
     def scaled_softmax_forward(self, input: torch.Tensor, scale: float) -> torch.Tensor:
         return scaled_softmax_forward_torch(input, scale)
@@ -366,55 +341,55 @@ class ReferenceBackend(TEFLBackendBase):
         return NVTE_Fused_Attn_Backend.NVTE_No_Backend
 
     def fused_attn_fwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_attn_fwd - not implemented in torch backend")
+        raise NotImplementedError("fused_attn_fwd - not implemented in reference backend")
 
     def fused_attn_bwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_attn_bwd - not implemented in torch backend")
+        raise NotImplementedError("fused_attn_bwd - not implemented in reference backend")
 
     def fa_prepare_fwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fa_prepare_fwd - not implemented in torch backend")
+        raise NotImplementedError("fa_prepare_fwd - not implemented in reference backend")
 
     def fa_prepare_bwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fa_prepare_bwd - not implemented in torch backend")
+        raise NotImplementedError("fa_prepare_bwd - not implemented in reference backend")
 
     def copy_to_kv_cache(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("copy_to_kv_cache - not implemented in torch backend")
+        raise NotImplementedError("copy_to_kv_cache - not implemented in reference backend")
 
     def convert_thd_to_bshd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("convert_thd_to_bshd - not implemented in torch backend")
+        raise NotImplementedError("convert_thd_to_bshd - not implemented in reference backend")
 
     def convert_bshd_to_thd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("convert_bshd_to_thd - not implemented in torch backend")
+        raise NotImplementedError("convert_bshd_to_thd - not implemented in reference backend")
 
     def fused_rope_forward(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_rope_forward - not implemented in torch backend")
+        raise NotImplementedError("fused_rope_forward - not implemented in reference backend")
 
     def fused_rope_backward(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_rope_backward - not implemented in torch backend")
+        raise NotImplementedError("fused_rope_backward - not implemented in reference backend")
 
     def fused_qkv_rope_forward(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_qkv_rope_forward - not implemented in torch backend")
+        raise NotImplementedError("fused_qkv_rope_forward - not implemented in reference backend")
 
     def fused_qkv_rope_backward(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_qkv_rope_backward - not implemented in torch backend")
+        raise NotImplementedError("fused_qkv_rope_backward - not implemented in reference backend")
 
     def fused_topk_with_score_function_fwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_topk_with_score_function_fwd - not implemented in torch backend")
+        raise NotImplementedError("fused_topk_with_score_function_fwd - not implemented in reference backend")
 
     def fused_topk_with_score_function_bwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_topk_with_score_function_bwd - not implemented in torch backend")
+        raise NotImplementedError("fused_topk_with_score_function_bwd - not implemented in reference backend")
 
     def fused_score_for_moe_aux_loss_fwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_score_for_moe_aux_loss_fwd - not implemented in torch backend")
+        raise NotImplementedError("fused_score_for_moe_aux_loss_fwd - not implemented in reference backend")
 
     def fused_score_for_moe_aux_loss_bwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_score_for_moe_aux_loss_bwd - not implemented in torch backend")
+        raise NotImplementedError("fused_score_for_moe_aux_loss_bwd - not implemented in reference backend")
 
     def fused_moe_aux_loss_fwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_moe_aux_loss_fwd - not implemented in torch backend")
+        raise NotImplementedError("fused_moe_aux_loss_fwd - not implemented in reference backend")
 
     def fused_moe_aux_loss_bwd(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_moe_aux_loss_bwd - not implemented in torch backend")
+        raise NotImplementedError("fused_moe_aux_loss_bwd - not implemented in reference backend")
 
     def dropout_fwd(self, input: torch.Tensor, dropout_probability: float, out: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         return dropout_fwd_torch(input, dropout_probability, out)
@@ -423,28 +398,28 @@ class ReferenceBackend(TEFLBackendBase):
         return dropout_bwd_torch(grad_output, mask, dropout_probability, grad_input)
 
     def fp8_transpose(self, input: torch.Tensor, dtype: Any, *, out: torch.Tensor) -> None:
-        raise NotImplementedError("fp8_transpose - not implemented in torch backend")
+        raise NotImplementedError("fp8_transpose - not implemented in reference backend")
 
     def swap_first_dims(self, tensor: torch.Tensor, *, out: torch.Tensor) -> None:
-        raise NotImplementedError("swap_first_dims - not implemented in torch backend")
+        raise NotImplementedError("swap_first_dims - not implemented in reference backend")
 
     def compute_amax(self, input: torch.Tensor, amax: torch.Tensor) -> None:
-        raise NotImplementedError("compute_amax - not implemented in torch backend")
+        raise NotImplementedError("compute_amax - not implemented in reference backend")
 
     def fused_amax_and_scale_update_after_reduction(self, *args, **kwargs) -> None:
-        raise NotImplementedError("fused_amax_and_scale_update_after_reduction - not implemented in torch backend")
+        raise NotImplementedError("fused_amax_and_scale_update_after_reduction - not implemented in reference backend")
 
     def fp8_block_scaling_compute_partial_amax(self, *args, **kwargs) -> None:
-        raise NotImplementedError("fp8_block_scaling_compute_partial_amax - not implemented in torch backend")
+        raise NotImplementedError("fp8_block_scaling_compute_partial_amax - not implemented in reference backend")
 
     def fp8_block_scaling_partial_cast(self, *args, **kwargs) -> None:
-        raise NotImplementedError("fp8_block_scaling_partial_cast - not implemented in torch backend")
+        raise NotImplementedError("fp8_block_scaling_partial_cast - not implemented in reference backend")
 
     def fused_multi_row_padding(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_multi_row_padding - not implemented in torch backend")
+        raise NotImplementedError("fused_multi_row_padding - not implemented in reference backend")
 
     def fused_multi_row_unpadding(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("fused_multi_row_unpadding - not implemented in torch backend")
+        raise NotImplementedError("fused_multi_row_unpadding - not implemented in reference backend")
 
     def get_cublasLt_version(self) -> int:
         return 0
@@ -456,37 +431,37 @@ class ReferenceBackend(TEFLBackendBase):
         return 0
 
     def thd_read_half_tensor(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("thd_read_half_tensor - not implemented in torch backend")
+        raise NotImplementedError("thd_read_half_tensor - not implemented in reference backend")
 
     def thd_second_half_lse_correction(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("thd_second_half_lse_correction - not implemented in torch backend")
+        raise NotImplementedError("thd_second_half_lse_correction - not implemented in reference backend")
 
     def thd_read_second_half_lse(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("thd_read_second_half_lse - not implemented in torch backend")
+        raise NotImplementedError("thd_read_second_half_lse - not implemented in reference backend")
 
     def thd_out_correction(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("thd_out_correction - not implemented in torch backend")
+        raise NotImplementedError("thd_out_correction - not implemented in reference backend")
 
     def thd_grad_correction(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("thd_grad_correction - not implemented in torch backend")
+        raise NotImplementedError("thd_grad_correction - not implemented in reference backend")
 
     def thd_get_partitioned_indices(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("thd_get_partitioned_indices - not implemented in torch backend")
+        raise NotImplementedError("thd_get_partitioned_indices - not implemented in reference backend")
 
     def init_nvshmem_backend(self, *args, **kwargs) -> None:
-        raise NotImplementedError("init_nvshmem_backend - not implemented in torch backend")
+        raise NotImplementedError("init_nvshmem_backend - not implemented in reference backend")
 
     def create_nvshmem_tensor(self, *args, **kwargs) -> torch.Tensor:
-        raise NotImplementedError("create_nvshmem_tensor - not implemented in torch backend")
+        raise NotImplementedError("create_nvshmem_tensor - not implemented in reference backend")
 
     def nvshmem_send_on_current_stream(self, *args, **kwargs) -> None:
-        raise NotImplementedError("nvshmem_send_on_current_stream - not implemented in torch backend")
+        raise NotImplementedError("nvshmem_send_on_current_stream - not implemented in reference backend")
 
     def nvshmem_wait_on_current_stream(self, *args, **kwargs) -> None:
-        raise NotImplementedError("nvshmem_wait_on_current_stream - not implemented in torch backend")
+        raise NotImplementedError("nvshmem_wait_on_current_stream - not implemented in reference backend")
 
     def nvshmem_finalize(self) -> None:
-        raise NotImplementedError("nvshmem_finalize - not implemented in torch backend")
+        raise NotImplementedError("nvshmem_finalize - not implemented in reference backend")
 
     def multi_tensor_scale(self, chunk_size: int, noop_flag: torch.Tensor, tensor_lists: List[List[torch.Tensor]], scale: float) -> None:
         return multi_tensor_scale_torch(chunk_size, noop_flag, tensor_lists, scale)
@@ -513,34 +488,34 @@ class ReferenceBackend(TEFLBackendBase):
         return multi_tensor_adam_torch(*args, **kwargs)
 
     def multi_tensor_adam_param_remainder(self, *args, **kwargs) -> None:
-        raise NotImplementedError("multi_tensor_adam_param_remainder - not implemented in torch backend")
+        raise NotImplementedError("multi_tensor_adam_param_remainder - not implemented in reference backend")
 
     def multi_tensor_adam_fp8(self, *args, **kwargs) -> None:
-        raise NotImplementedError("multi_tensor_adam_fp8 - not implemented in torch backend")
+        raise NotImplementedError("multi_tensor_adam_fp8 - not implemented in reference backend")
 
     def multi_tensor_adam_capturable(self, *args, **kwargs) -> None:
-        raise NotImplementedError("multi_tensor_adam_capturable - not implemented in torch backend")
+        raise NotImplementedError("multi_tensor_adam_capturable - not implemented in reference backend")
 
     def multi_tensor_adam_capturable_master(self, *args, **kwargs) -> None:
-        raise NotImplementedError("multi_tensor_adam_capturable_master - not implemented in torch backend")
+        raise NotImplementedError("multi_tensor_adam_capturable_master - not implemented in reference backend")
 
     def multi_tensor_sgd(self, *args, **kwargs) -> None:
         return multi_tensor_sgd_torch(*args, **kwargs)
 
     def multi_tensor_compute_scale_and_scale_inv(self, *args, **kwargs) -> None:
-        raise NotImplementedError("multi_tensor_compute_scale_and_scale_inv - not implemented in torch backend")
+        raise NotImplementedError("multi_tensor_compute_scale_and_scale_inv - not implemented in reference backend")
 
     def bulk_overlap_ag_with_external_gemm(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("bulk_overlap_ag_with_external_gemm - not implemented in torch backend")
+        raise NotImplementedError("bulk_overlap_ag_with_external_gemm - not implemented in reference backend")
 
     def create_fp8_tensor_meta(self) -> FP8TensorMeta:
         return FP8TensorMeta()
 
     def create_comm_overlap_helper(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("create_comm_overlap_helper - not implemented in torch backend")
+        raise NotImplementedError("create_comm_overlap_helper - not implemented in reference backend")
 
     def create_comm_overlap(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("create_comm_overlap - not implemented in torch backend")
+        raise NotImplementedError("create_comm_overlap - not implemented in reference backend")
 
     def create_comm_overlap_p2p(self, *args, **kwargs) -> Any:
-        raise NotImplementedError("create_comm_overlap_p2p - not implemented in torch backend")
+        raise NotImplementedError("create_comm_overlap_p2p - not implemented in reference backend")

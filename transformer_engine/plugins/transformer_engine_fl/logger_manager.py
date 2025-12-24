@@ -7,7 +7,6 @@ import sys
 import os
 import threading
 
-
 class Logger:
     def __init__(self, name, level=logging.INFO):
         self.logger = logging.getLogger(name)
@@ -27,35 +26,34 @@ class Logger:
         self._printed_once = set()
 
     def info(self, message):
-        self.logger.info(message)
+        self.logger.info(message, stacklevel=2)
 
     def warning(self, message):
-        self.logger.warning(message)
+        self.logger.warning(message, stacklevel=2)
 
     def error(self, message):
-        self.logger.error(message)
+        self.logger.error(message, stacklevel=2)
 
     def critical(self, message):
-        self.logger.critical(message)
+        self.logger.critical(message, stacklevel=2)
 
     def debug(self, message):
-        self.logger.debug(message)
+        self.logger.debug(message, stacklevel=2)
 
     def info_once(self, message):
         if message not in self._printed_once:
             self._printed_once.add(message)
-            self.logger.info(message)
+            self.logger.info(message, stacklevel=2)
 
     def warning_once(self, message):
         if message not in self._printed_once:
             self._printed_once.add(message)
-            self.logger.warning(message)
+            self.logger.warning(message, stacklevel=2)
 
     def debug_once(self, message):
         if message not in self._printed_once:
             self._printed_once.add(message)
-            self.logger.debug(message)
-
+            self.logger.debug(message, stacklevel=2)
 
 class LoggerManager:
     _instance = None
@@ -110,3 +108,12 @@ class LoggerManager:
             with self._printed_once_lock:
                 self._global_logger = None
                 self._global_printed_once.clear()
+
+def get_logger():
+    return LoggerManager.get_instance().get_logger()
+
+def print_once(message):
+    LoggerManager.get_instance().print_once(message)
+
+def debug_print_once(func_name: str, backend_name: str = "Backend", *args, **kwargs):
+    LoggerManager.get_instance().debug_print_once(func_name, backend_name, *args, **kwargs)

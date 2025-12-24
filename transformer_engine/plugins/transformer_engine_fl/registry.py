@@ -4,89 +4,115 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Type
+import threading
+from dataclasses import dataclass
+from typing import Dict, List, Sequence
 
-from .base import TEFLBackendBase, TEFLModule
-
-def _get_backend_registry():
-    from .backend_registry import BackendRegistry
-    return BackendRegistry
-
-def register_backend(cls: Type[TEFLBackendBase]) -> Type[TEFLBackendBase]:
-    return _get_backend_registry().get_instance().register_backend(cls)
+from .types import OpImpl
 
 
-def unregister_backend(name: str) -> bool:
-    return _get_backend_registry().get_instance().unregister_backend(name)
+@dataclass
+class OpRegistrySnapshot:
+    """Immutable snapshot of operator registry state"""
+    impls_by_op: Dict[str, List[OpImpl]]
 
 
-def get_backend(name: Optional[str] = None) -> TEFLBackendBase:
-    return _get_backend_registry().get_instance().get_backend(name)
+class OpRegistry:
+    """
+    Thread-safe registry for operator implementations.
 
+    This registry stores operator implementations indexed by op_name and impl_id.
+    Each operator can have multiple implementations from different backends/vendors.
+    """
 
-def get_current_backend() -> TEFLBackendBase:
-    return _get_backend_registry().get_instance().get_current_backend()
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        # Structure: {op_name: {impl_id: OpImpl}}
+        self._impls_by_op: Dict[str, Dict[str, OpImpl]] = {}
 
+    def register_impl(self, impl: OpImpl) -> None:
+        """
+        Register a single operator implementation.
 
-def set_backend(name: str) -> TEFLBackendBase:
-    return _get_backend_registry().get_instance().set_backend(name)
+        Args:
+            impl: OpImpl instance to register
 
+        Raises:
+            ValueError: If impl_id is already registered for this op_name
+        """
+        with self._lock:
+            by_id = self._impls_by_op.setdefault(impl.op_name, {})
+            if impl.impl_id in by_id:
+                raise ValueError(
+                    f"Duplicate impl_id '{impl.impl_id}' for op='{impl.op_name}'. "
+                    f"Existing: {by_id[impl.impl_id]}, New: {impl}"
+                )
+            by_id[impl.impl_id] = impl
 
-def list_backends() -> List[Dict]:
-    return _get_backend_registry().get_instance().list_backends()
+    def register_many(self, impls: Sequence[OpImpl]) -> None:
+        """
+        Register multiple operator implementations.
 
+        Args:
+            impls: Sequence of OpImpl instances to register
+        """
+        for impl in impls:
+            self.register_impl(impl)
 
-def get_registered_backend_names() -> List[str]:
-    return _get_backend_registry().get_instance().get_registered_backend_names()
+    def snapshot(self) -> OpRegistrySnapshot:
+        """
+        Create an immutable snapshot of current registry state.
 
+        Returns:
+            OpRegistrySnapshot with all registered implementations
+        """
+        with self._lock:
+            impls_by_op = {
+                op: list(by_id.values())
+                for op, by_id in self._impls_by_op.items()
+            }
+        return OpRegistrySnapshot(impls_by_op=impls_by_op)
 
-def is_backend_registered(name: str) -> bool:
-    return _get_backend_registry().get_instance().is_backend_registered(name)
+    def get_implementations(self, op_name: str) -> List[OpImpl]:
+        """
+        Get all implementations for a specific operator.
 
+        Args:
+            op_name: Name of the operator
 
-def get_tefl_module() -> TEFLModule:
-    return _get_backend_registry().get_instance().get_tefl_module()
+        Returns:
+            List of OpImpl for the operator (empty if not found)
+        """
+        with self._lock:
+            by_id = self._impls_by_op.get(op_name, {})
+            return list(by_id.values())
 
+    def get_implementation(self, op_name: str, impl_id: str) -> OpImpl | None:
+        """
+        Get a specific implementation by op_name and impl_id.
 
-def reset_registry() -> None:
-    _get_backend_registry().get_instance().reset_registry()
+        Args:
+            op_name: Name of the operator
+            impl_id: Implementation ID
 
+        Returns:
+            OpImpl if found, None otherwise
+        """
+        with self._lock:
+            by_id = self._impls_by_op.get(op_name, {})
+            return by_id.get(impl_id)
 
-def get_registry_snapshot() -> Dict[str, Type[TEFLBackendBase]]:
-    return _get_backend_registry().get_instance().get_registry_snapshot()
+    def list_operators(self) -> List[str]:
+        """
+        List all registered operator names.
 
+        Returns:
+            List of operator names
+        """
+        with self._lock:
+            return list(self._impls_by_op.keys())
 
-def _get_backend_instance(name: str) -> TEFLBackendBase:
-    return _get_backend_registry().get_instance()._get_backend_instance(name)
-
-
-def _export_backend_registry_class():
-    from .backend_registry import BackendRegistry
-    return BackendRegistry
-
-class _RegistryModule:
-    @property
-    def BackendRegistry(self):
-        return _export_backend_registry_class()
-
-_registry_module = _RegistryModule()
-BackendRegistry = _registry_module.BackendRegistry
-
-_BACKEND_REGISTRY: Dict[str, Type[TEFLBackendBase]] = {}
-_BACKEND_INSTANCES: Dict[str, TEFLBackendBase] = {}
-_CURRENT_BACKEND: Optional[str] = None
-_TEFL_MODULE: Optional[TEFLModule] = None
-__all__ = [
-    "BackendRegistry",
-    "register_backend",
-    "unregister_backend",
-    "get_backend",
-    "get_current_backend",
-    "set_backend",
-    "list_backends",
-    "get_registered_backend_names",
-    "is_backend_registered",
-    "get_registry_snapshot",
-    "reset_registry",
-    "get_tefl_module",
-]
+    def clear(self) -> None:
+        """Clear all registered implementations"""
+        with self._lock:
+            self._impls_by_op.clear()

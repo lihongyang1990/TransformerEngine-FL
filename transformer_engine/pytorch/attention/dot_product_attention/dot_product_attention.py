@@ -66,18 +66,6 @@ _FlashAttentionNative = FlashAttention
 # Use plugin system's flash_attention if available, otherwise use native
 FlashAttention = getattr(tex, 'flash_attention', _FlashAttentionNative)
 
-# Log which FlashAttention implementation is being used
-_flash_attn_source = "plugin_system" if hasattr(tex, 'flash_attention') else "native"
-if _flash_attn_source == "plugin_system":
-    # Try to get backend name from plugin system
-    try:
-        _backend_name = tex._backend.name if hasattr(tex, '_backend') else "unknown"
-        print(f"[DotProductAttention] Using plugin system FlashAttention (backend: {_backend_name})")
-    except Exception as e:
-        print(f"[DotProductAttention] Using plugin system FlashAttention (backend detection failed: {e})")
-else:
-    print("[DotProductAttention] Using native FlashAttention")
-
 # Setup Attention Logging
 attn_log.setup_logging()
 

@@ -8,18 +8,47 @@ from typing import List, Dict, Callable, Any, Optional
 
 
 def get_available_backends() -> List[str]:
+    """
+    Get list of available backends by extracting unique impl_ids from OpRegistry.
+
+    Returns impl_id prefixes (e.g., "default.flagos" -> "flagos")
+    """
     try:
-        from transformer_engine.plugins.transformer_engine_fl.registry import list_backends
-        backends = list_backends()
-        return [b['name'] for b in backends if b['available']]
+        from transformer_engine.plugins.transformer_engine_fl import get_registry
+
+        registry = get_registry()
+        all_impls = []
+        for op_name in registry.list_operators():
+            all_impls.extend(registry.get_implementations(op_name))
+
+        # Extract unique impl_id prefixes (e.g., "default.flagos" -> "flagos")
+        impl_ids = set()
+        for impl in all_impls:
+            # impl_id format: "kind.name" (e.g., "default.flagos", "vendor.cuda")
+            parts = impl.impl_id.split('.', 1)
+            if len(parts) == 2:
+                impl_ids.add(parts[1])  # Get the "name" part
+            else:
+                impl_ids.add(impl.impl_id)
+
+        return sorted(impl_ids)
     except Exception as e:
         print(f"Warning: Could not load backends: {e}")
-        return ['reference']
+        import traceback
+        traceback.print_exc()
+        return []
 
 
 def get_backend(name: str):
-    from transformer_engine.plugins.transformer_engine_fl.registry import get_backend
-    return get_backend(name)
+    """
+    Get a backend-like object that dispatches to OpRegistry.
+
+    This creates a dynamic object that calls tefl_module methods.
+    """
+    from transformer_engine.plugins.transformer_engine_fl import get_tefl_module
+
+    # Return the tefl_module itself as it has all operator methods
+    return get_tefl_module()
 
 
 def allclose(a: torch.Tensor, b: torch.Tensor, rtol: float = 1e-5, atol: float = 1e-8) -> bool:

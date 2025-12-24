@@ -5,45 +5,31 @@
 from __future__ import annotations
 
 import importlib
-import logging
 import os
 import sys
 from typing import Any, Callable, List, Optional, Tuple
+
+from .logger_manager import get_logger
 
 PLUGIN_GROUP = "te_fl.plugins"
 
 PLUGIN_MODULES_ENV = "TE_FL_PLUGIN_MODULES"
 
-logger = logging.getLogger("transformer_engine_fl.discovery")
+logger = get_logger()
 
 _discovered_plugins: List[Tuple[str, str, bool]] = []
 
-_DEBUG = os.environ.get("TE_FL_DEBUG", "0") == "1"
-
-
 def _log_debug(msg: str) -> None:
-    if _DEBUG:
-        print(f"[TEFL Discovery] {msg}")
     logger.debug(msg)
 
-
 def _log_info(msg: str) -> None:
-    if _DEBUG:
-        print(f"[TEFL Discovery] {msg}")
     logger.info(msg)
 
-
 def _log_warning(msg: str) -> None:
-    if _DEBUG:
-        print(f"[TEFL Discovery] WARNING: {msg}")
     logger.warning(msg)
 
-
 def _log_error(msg: str) -> None:
-    if _DEBUG:
-        print(f"[TEFL Discovery] ERROR: {msg}")
     logger.error(msg)
-
 
 def _get_entry_points():
     try:
@@ -73,7 +59,6 @@ def _get_entry_points():
         _log_warning(f"Error accessing entry points: {e}")
         return []
 
-
 def _call_register_function(
     obj: Any,
     registry_module: Any,
@@ -102,7 +87,6 @@ def _call_register_function(
     _log_debug(f"No register function found in {source_name}")
     return False
 
-
 def discover_from_entry_points(registry_module: Any) -> int:
     loaded = 0
     entry_points_list = _get_entry_points()
@@ -130,7 +114,6 @@ def discover_from_entry_points(registry_module: Any) -> int:
             _discovered_plugins.append((ep_name, "entry_point", False))
 
     return loaded
-
 
 def discover_from_env_modules(registry_module: Any) -> int:
     modules_str = os.environ.get(PLUGIN_MODULES_ENV, "").strip()
@@ -163,8 +146,20 @@ def discover_from_env_modules(registry_module: Any) -> int:
 
     return loaded
 
-
 def discover_plugins(registry_module: Any) -> int:
+    """
+    Main plugin discovery function.
+
+    Discovers and registers plugins from:
+    1. Entry points (group: 'te_fl.plugins')
+    2. Environment variable modules (TE_FL_PLUGIN_MODULES)
+
+    Args:
+        registry_module: OpRegistry instance to register plugins to
+
+    Returns:
+        Number of successfully loaded plugins
+    """
     if registry_module is None:
         _log_warning("Registry module is None, skipping plugin discovery")
         return 0
@@ -181,12 +176,15 @@ def discover_plugins(registry_module: Any) -> int:
 
     return total
 
+# Alias for compatibility with different naming conventions
+discover_op_plugins = discover_plugins
 
 def get_discovered_plugins() -> List[Tuple[str, str, bool]]:
+    """Get list of discovered plugins (name, source, success)"""
     return _discovered_plugins.copy()
 
-
 def clear_discovered_plugins() -> None:
+    """Clear the discovered plugins list (for testing)"""
     _discovered_plugins.clear()
 
 

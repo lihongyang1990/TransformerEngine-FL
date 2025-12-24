@@ -8,7 +8,6 @@ from enum import IntEnum
 
 import torch
 
-
 class DType(IntEnum):
     kByte = 0
     kInt32 = 2
@@ -136,18 +135,15 @@ class CommOverlapAlgo(IntEnum):
     ATOMIC_GEMM_RS_P2P = 7
     EXTERNAL_BULK_OVERLAP_AG = 8
 
-
 class FP8TensorMeta:
     def __init__(self):
         self.scale: Optional[torch.Tensor] = None
         self.scale_inv: Optional[torch.Tensor] = None
         self.amax_history: Optional[torch.Tensor] = None
 
-
 class CommGemmOverlapAlgoConfig:
     def __init__(self, *args, **kwargs):
         pass
-
 
 class FusedAdamCUDAKernel:
     def __init__(self, *args, **kwargs):
@@ -156,7 +152,6 @@ class FusedAdamCUDAKernel:
             "Not supported in FL mode."
         )
 
-
 class FusedSGDCUDAKernel:
     def __init__(self, *args, **kwargs):
         raise NotImplementedError(
@@ -164,12 +159,10 @@ class FusedSGDCUDAKernel:
             "Not supported in FL mode."
         )
 
-
 class CommOverlapHelper:
     def __init__(self, world_group=None, intra_node_group=None):
         self.world_group = world_group
         self.intra_node_group = intra_node_group
-
 
 class CommOverlap:
     def __init__(self, *args, **kwargs):
@@ -178,14 +171,12 @@ class CommOverlap:
             "Direct instantiation is not supported in FL mode."
         )
 
-
 class CommOverlapP2P:
     def __init__(self, *args, **kwargs):
         raise NotImplementedError(
             "CommOverlapP2P should be created via backend.create_comm_overlap_p2p(). "
             "Direct instantiation is not supported in FL mode."
         )
-
 
 class TEFLBackendBase(ABC):
     @property
@@ -1084,11 +1075,73 @@ class TEFLBackendBase(ABC):
     ) -> Any:
         raise NotImplementedError
 
+class FlashAttentionBase(torch.nn.Module, ABC):
+    def __init__(
+        self,
+        softmax_scale: float,
+        attention_dropout: float = 0.0,
+        attention_dropout_ctx: Optional[Callable] = None,
+        attention_type: str = "self",
+        layer_number: Optional[int] = None,
+        deterministic: bool = False,
+    ) -> None:
+        super().__init__()
+
+        self.softmax_scale = softmax_scale
+        self.attention_dropout = attention_dropout
+        self.attention_dropout_ctx = attention_dropout_ctx or nullcontext
+        self.attention_type = attention_type
+        self.layer_number = 1 if layer_number is None else layer_number
+        self.deterministic = deterministic
+
+    def forward(
+        self,
+        query_layer: torch.Tensor,
+        key_layer: torch.Tensor,
+        value_layer: torch.Tensor,
+        attention_mask: Optional[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]] = None,
+        qkv_layout: str = "sbh3d",
+        cu_seqlens_q: Optional[torch.Tensor] = None,
+        cu_seqlens_kv: Optional[torch.Tensor] = None,
+        max_seqlen_q: Optional[int] = None,
+        max_seqlen_kv: Optional[int] = None,
+        attn_mask_type: str = "causal",
+        window_size: Optional[Tuple[int, int]] = None,
+        alibi_slopes: Optional[torch.Tensor] = None,
+        cp_group: Optional[Any] = None,
+        cp_global_ranks: Optional[List[int]] = None,
+        cp_stream: Optional[torch.cuda.Stream] = None,
+        cp_comm_type: str = "p2p",
+        fp8: bool = False,
+        fp8_meta: Optional[Dict[str, Any]] = None,
+        quantizers: Optional[Any] = None,
+        inference_params: Optional[Any] = None,
+        flash_attention_backend: Optional[Any] = None,
+        fp8_output: bool = False,
+    ) -> torch.Tensor:
+        raise NotImplementedError("Subclasses must implement forward()")
+
+    @property
+    def backend_name(self) -> str:
+        return self.__class__.__name__
+
 
 class TEFLModule:
-    def __init__(self, backend: TEFLBackendBase, registry_funcs: Optional[Dict[str, Callable]] = None):
-        self._backend = backend
-        self._registry_funcs = registry_funcs or {}
+    def __init__(self, manager=None):
+        """
+        Initialize TEFLModule.
+
+        Args:
+            manager: OpManager instance for operator dispatch.
+                       If None, will use the global default OpManager.
+        """
+        # Import here to avoid circular dependency
+        from .manager import get_default_manager
+        from .logger_manager import get_logger
+
+        self._manager = manager if manager is not None else get_default_manager()
+        self._logger = get_logger()
+        self._called_ops = set()  # Track which ops have been called
 
         self.DType = DType
         self.Float8BlockScaleTensorFormat = Float8BlockScaleTensorFormat
@@ -1114,18 +1167,57 @@ class TEFLModule:
         self.FusedAdamCUDAKernel = FusedAdamCUDAKernel
         self.FusedSGDCUDAKernel = FusedSGDCUDAKernel
 
+    def _wrap_op_with_logging(self, op_name: str, fn: Any) -> Any:
+        """Wrap an operator function to log its first call"""
+        import functools
+
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            # Print info on first call
+            if op_name not in self._called_ops:
+                self._called_ops.add(op_name)
+                impl_id = self._manager.get_selected_impl_id(op_name)
+                # Get implementation details from registry
+                snap = self._manager.registry.snapshot()
+                for impl in snap.impls_by_op.get(op_name, []):
+                    if impl.impl_id == impl_id:
+                        self._logger.info(
+                            f"Op '{op_name}' using '{impl_id}' (kind={impl.kind.value}, vendor={impl.vendor})"
+                        )
+                        break
+            return fn(*args, **kwargs)
+
+        return wrapper
+
     def __getattr__(self, name: str) -> Any:
+        """
+        Dynamically resolve operators through OpManager.
+
+        This delegates to OpManager.resolve() which handles:
+        - Lazy initialization
+        - Plugin discovery
+        - Policy-based selection
+        - Availability checking
+        - Result caching
+        """
         if name.startswith('_'):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
-        if name in self._registry_funcs:
-            return self._registry_funcs[name]
-
-        return getattr(self._backend, name)
+        # Try to resolve through OpManager
+        try:
+            fn = self._manager.resolve(name)
+            # Wrap the function to log first call
+            return self._wrap_op_with_logging(name, fn)
+        except RuntimeError as e:
+            # Re-raise as AttributeError for better error messages
+            available_ops = self._manager.registry.list_operators()
+            raise AttributeError(
+                f"Operator '{name}' not found or not available. "
+                f"Available operators: {available_ops}. "
+                f"Original error: {e}"
+            )
 
     def __dir__(self):
-        backend_attrs = [attr for attr in dir(self._backend) if not attr.startswith('_')]
-
         module_attrs = [
             'DType', 'Float8BlockScaleTensorFormat', 'FP8FwdTensors', 'FP8BwdTensors',
             'FP8TensorMeta', 'NVTE_Activation_Type', 'NVTE_Bias_Type', 'NVTE_Mask_Type',
@@ -1135,9 +1227,10 @@ class TEFLModule:
             'FusedAdamCUDAKernel', 'FusedSGDCUDAKernel'
         ]
 
-        registry_attrs = list(self._registry_funcs.keys())
+        # Add operator names from OpManager's registry
+        op_attrs = self._manager.registry.list_operators()
 
-        return list(set(backend_attrs + module_attrs + registry_attrs))
+        return list(set(module_attrs + op_attrs))
 
     def __getitem__(self, key: str):
         return self.__getattr__(key)
@@ -1145,10 +1238,6 @@ class TEFLModule:
     @property
     def __all__(self):
         return self.__dir__()
-
-    @property
-    def backend(self) -> TEFLBackendBase:
-        return self._backend
 
     def flash_attention(
         self,
@@ -1159,7 +1248,30 @@ class TEFLModule:
         layer_number: Optional[int] = None,
         deterministic: bool = False,
     ) -> "FlashAttentionBase":
-        flash_attn_class = self._backend.get_flash_attention_class()
+        """
+        Get FlashAttention implementation through OpManager.
+        """
+        # Get the flash attention class getter through OpManager
+        get_flash_attention_class_fn = self._manager.resolve("get_flash_attention_class")
+
+        # Call the getter to get the FlashAttention class
+        flash_attn_class = get_flash_attention_class_fn()
+
+        # Print info on first call to flash_attention
+        op_name = "flash_attention"
+        if op_name not in self._called_ops:
+            self._called_ops.add(op_name)
+            impl_id = self._manager.get_selected_impl_id("get_flash_attention_class")
+            # Get implementation details from registry
+            snap = self._manager.registry.snapshot()
+            for impl in snap.impls_by_op.get("get_flash_attention_class", []):
+                if impl.impl_id == impl_id:
+                    self._logger.info(
+                        f"Op '{op_name}' using '{impl_id}' (kind={impl.kind.value}, vendor={impl.vendor})"
+                    )
+                    break
+
+        # Instantiate and return the FlashAttention
         return flash_attn_class(
             softmax_scale=softmax_scale,
             attention_dropout=attention_dropout,
@@ -1170,4 +1282,112 @@ class TEFLModule:
         )
 
     def __repr__(self) -> str:
-        return f"TEFLModule(backend={self._backend.name})"
+        op_count = len(self._manager.registry.list_operators())
+        return f"TEFLModule(operators={op_count}, manager={self._manager.__class__.__name__})"
+
+# Global singleton instance
+_global_tefl_module: Optional[TEFLModule] = None
+_tefl_module_lock = None
+
+def get_tefl_module() -> TEFLModule:
+    """
+    Get or create the global TEFLModule instance.
+
+    This function returns a singleton TEFLModule that uses the default OpManager.
+    The instance is created lazily on first access.
+
+    Returns:
+        The global TEFLModule instance
+
+    Example:
+        >>> import transformer_engine_fl as te_fl
+        >>> # Or explicitly:
+        >>> from transformer_engine_fl.base import get_tefl_module
+        >>> te_fl = get_tefl_module()
+        >>> result = te_fl.rmsnorm_fwd(input, weight, eps=1e-5)
+    """
+    global _global_tefl_module, _tefl_module_lock
+
+    if _global_tefl_module is None:
+        # Import here to avoid issues at module load time
+        import threading
+
+        if _tefl_module_lock is None:
+            _tefl_module_lock = threading.RLock()
+
+        with _tefl_module_lock:
+            if _global_tefl_module is None:
+                _global_tefl_module = TEFLModule()
+
+    return _global_tefl_module
+
+def reset_tefl_module() -> None:
+    """
+    Reset the global TEFLModule instance.
+
+    This is primarily useful for testing. After calling this function,
+    the next call to get_tefl_module() will create a fresh instance.
+
+    Warning:
+        This function is not thread-safe and should only be used in
+        single-threaded test environments.
+    """
+    global _global_tefl_module, _tefl_module_lock
+
+    if _tefl_module_lock is None:
+        import threading
+        _tefl_module_lock = threading.RLock()
+
+    with _tefl_module_lock:
+        _global_tefl_module = None
+
+# Backward compatibility functions
+def get_registry():
+    """
+    Get the global OpRegistry instance (via OpManager).
+
+    DEPRECATED: Use get_default_manager().registry instead.
+
+    This function is kept for backward compatibility with code that
+    expects the old API.
+
+    Returns:
+        The OpRegistry instance from the default OpManager
+
+    Example:
+        >>> from transformer_engine_fl.base import get_registry
+        >>> registry = get_registry()
+        >>> ops = registry.list_operators()
+    """
+    from .manager import get_default_manager
+    return get_default_manager().registry
+
+def get_manager():
+    """
+    Get the global OpManager instance.
+
+    This is the recommended way to access the OpManager.
+
+    Returns:
+        The default OpManager instance
+
+    Example:
+        >>> from transformer_engine_fl.base import get_manager
+        >>> manager = get_manager()
+        >>> impl_fn = manager.resolve("rmsnorm_fwd")
+    """
+    from .manager import get_default_manager
+    return get_default_manager()
+
+def reset_registry() -> None:
+    """
+    Reset the global OpManager and OpRegistry.
+
+    DEPRECATED: Use reset_default_manager() instead.
+
+    This function is kept for backward compatibility.
+    """
+    from .manager import reset_default_manager
+    reset_default_manager()
+    # Also reset the TEFLModule singleton since it depends on OpManager
+    reset_tefl_module()
