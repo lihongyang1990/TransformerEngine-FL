@@ -19,8 +19,22 @@ from typing import Optional, Tuple
 
 
 def skip_cuda_build() -> bool:
-    """Check if CUDA build was skipped (FL-only mode)."""
-    return bool(int(os.environ.get("TE_FL_SKIP_CUDA", "0")))
+    """Check if CUDA build was skipped (FL-only mode).
+
+    First checks environment variable (for runtime override),
+    then falls back to build-time configuration.
+    """
+    # Environment variable takes precedence (allows runtime override)
+    if os.environ.get("TE_FL_SKIP_CUDA"):
+        return bool(int(os.environ.get("TE_FL_SKIP_CUDA", "0")))
+
+    # Fall back to build-time configuration
+    try:
+        from transformer_engine.plugins.transformer_engine_fl._build_config import SKIP_CUDA_BUILD
+        return SKIP_CUDA_BUILD
+    except ImportError:
+        # If build config doesn't exist, default to False
+        return False
 
 # Load plugins system - this handles module registration and backend initialization
 # The _module_setup inside transformer_engine_fl will:
