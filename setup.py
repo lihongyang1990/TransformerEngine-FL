@@ -47,12 +47,12 @@ archs = cuda_archs()
 def generate_build_config(skip_cuda_build):
     """Generate build-time configuration file."""
     config_template_path = (
-        current_file_path / "transformer_engine" / "plugins" /
-        "transformer_engine_fl" / "_build_config.py.template"
+        current_file_path / "transformer_engine" / "plugin" /
+        "core" / "_build_config.py.template"
     )
     config_output_path = (
-        current_file_path / "transformer_engine" / "plugins" /
-        "transformer_engine_fl" / "_build_config.py"
+        current_file_path / "transformer_engine" / "plugin" /
+        "core" / "_build_config.py"
     )
 
     if config_template_path.exists():

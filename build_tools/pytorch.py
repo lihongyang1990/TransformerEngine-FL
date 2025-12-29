@@ -86,7 +86,7 @@ def setup_pytorch_extension(
     from torch.utils.cpp_extension import CppExtension
 
     # Use transformer_engine_torch_nv as the native NVIDIA module name
-    # This allows the plugins system to use transformer_engine_torch as the unified interface
+    # This allows the plugin system to use transformer_engine_torch as the unified interface
     return CppExtension(
         name="transformer_engine_torch_nv",
         sources=[str(src) for src in sources],
