@@ -44,6 +44,14 @@ class ReferenceBackend(TEFLBackendBase):
         from .flash_attention import FlashAttentionTorch
         return FlashAttentionTorch
 
+    def get_unfused_dot_product_attention_class(self):
+        from .flash_attention import UnfusedDotProductAttentionTorch
+        return UnfusedDotProductAttentionTorch
+
+    def get_fused_attention_class(self):
+        from .flash_attention import FusedAttentionTorch
+        return FusedAttentionTorch
+
     def generic_gemm(
         self,
         A: torch.Tensor,

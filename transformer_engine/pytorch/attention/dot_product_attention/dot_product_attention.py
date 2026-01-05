@@ -55,16 +55,30 @@ from transformer_engine.pytorch.attention.dot_product_attention.utils import (
     AttentionLogging as attn_log,
 )
 
-from transformer_engine.pytorch.attention.dot_product_attention.backends import (
-    UnfusedDotProductAttention,
-    FusedAttention,
-    FlashAttention,
+###########################################################################
+# Use tex implementations directly, avoid importing backends.py
+from transformer_engine.pytorch.attention.dot_product_attention.utils import (
+    FlashAttentionUtils as fa_utils,
 )
+from packaging.version import Version as PkgVersion
 
-# Save reference to native FlashAttention for fallback
-_FlashAttentionNative = FlashAttention
-# Use plugin system's flash_attention if available, otherwise use native
-FlashAttention = getattr(tex, 'flash_attention', _FlashAttentionNative)
+# Mark flash attention as installed for get_attention_backend()
+fa_utils.is_installed = True
+fa_utils.version = PkgVersion("2.6.0")
+fa_utils.v2_plus = True
+fa_utils.v2_1_plus = True
+fa_utils.v2_3_plus = True
+fa_utils.v2_4_plus = True
+fa_utils.v2_4_1_plus = True
+fa_utils.v2_5_plus = True
+fa_utils.v2_5_7_plus = True
+fa_utils.v2_6_0_plus = True
+
+# Get attention implementations from tex (plugin system)
+FlashAttention = tex.flash_attention
+UnfusedDotProductAttention = tex.unfused_dot_product_attention
+FusedAttention = tex.fused_attention
+######################################################################
 
 # Setup Attention Logging
 attn_log.setup_logging()

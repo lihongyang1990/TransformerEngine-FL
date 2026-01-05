@@ -187,6 +187,12 @@ class TEFLBackendBase(ABC):
     def get_flash_attention_class(self) -> Type["FlashAttentionBase"]:
         raise NotImplementedError
 
+    def get_unfused_dot_product_attention_class(self) -> Type["UnfusedDotProductAttentionBase"]:
+        raise NotImplementedError
+
+    def get_fused_attention_class(self) -> Type["FusedAttentionBase"]:
+        raise NotImplementedError
+
     def quantize(
         self,
         tensor: torch.Tensor,
@@ -1111,6 +1117,113 @@ class FlashAttentionBase(torch.nn.Module, ABC):
     def backend_name(self) -> str:
         return self.__class__.__name__
 
+class UnfusedDotProductAttentionBase(torch.nn.Module, ABC):
+    """Base class for UnfusedDotProductAttention implementations."""
+    def __init__(
+        self,
+        softmax_scale: float,
+        attention_type: str = "self",
+        attention_dropout: float = 0.0,
+        attention_dropout_ctx: Optional[Callable] = None,
+        layer_number: Optional[int] = None,
+        softmax_type: str = "vanilla",
+        return_max_logit: Optional[bool] = False,
+    ) -> None:
+        super().__init__()
+        self.softmax_scale = softmax_scale
+        self.attention_type = attention_type
+        self.attention_dropout = attention_dropout
+        self.attention_dropout_ctx = attention_dropout_ctx or nullcontext
+        self.layer_number = 1 if layer_number is None else layer_number
+        self.softmax_type = softmax_type
+        self.return_max_logit = return_max_logit
+
+    def forward(
+        self,
+        _alibi_cache: Dict[str, Any],
+        query_layer: torch.Tensor,
+        key_layer: torch.Tensor,
+        value_layer: torch.Tensor,
+        qkv_layout: str = "sbh3d",
+        cu_seqlens_q: Optional[torch.Tensor] = None,
+        cu_seqlens_kv: Optional[torch.Tensor] = None,
+        max_seqlen_q: Optional[torch.Tensor] = None,
+        max_seqlen_kv: Optional[torch.Tensor] = None,
+        attn_mask_type: str = "causal",
+        attention_mask: Optional[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]] = None,
+        window_size: Optional[Tuple[int, int]] = None,
+        core_attention_bias_type: str = "no_bias",
+        core_attention_bias: Optional[torch.Tensor] = None,
+        alibi_slopes: Optional[torch.Tensor] = None,
+        inference_params: Optional[Any] = None,
+        softmax_offset: torch.Tensor = None,
+        fp8: bool = False,
+        fp8_meta: Optional[Dict[str, Any]] = None,
+        quantizers: Optional[Any] = None,
+        fp8_output: bool = False,
+    ) -> torch.Tensor:
+        raise NotImplementedError("Subclasses must implement forward()")
+
+    @property
+    def backend_name(self) -> str:
+        return self.__class__.__name__
+
+class FusedAttentionBase(torch.nn.Module, ABC):
+    """Base class for FusedAttention implementations."""
+    def __init__(
+        self,
+        softmax_scale: float,
+        attention_dropout: float = 0.0,
+        attention_dropout_ctx: Optional[Callable] = None,
+        attention_type: str = "self",
+        layer_number: Optional[int] = None,
+        deterministic: bool = False,
+        softmax_type: str = "vanilla",
+        return_max_logit: Optional[bool] = False,
+    ) -> None:
+        super().__init__()
+        self.softmax_scale = softmax_scale
+        self.attention_dropout = attention_dropout
+        self.attention_dropout_ctx = attention_dropout_ctx or nullcontext
+        self.attention_type = attention_type
+        self.layer_number = 1 if layer_number is None else layer_number
+        self.deterministic = deterministic
+        self.softmax_type = softmax_type
+        self.return_max_logit = return_max_logit
+
+    def forward(
+        self,
+        query_layer: torch.Tensor,
+        key_layer: torch.Tensor,
+        value_layer: torch.Tensor,
+        qkv_layout: str = "sbh3d",
+        cu_seqlens_q: Optional[torch.Tensor] = None,
+        cu_seqlens_kv: Optional[torch.Tensor] = None,
+        max_seqlen_q: Optional[int] = None,
+        max_seqlen_kv: Optional[int] = None,
+        attn_mask_type: str = "causal",
+        attention_mask: Optional[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]] = None,
+        window_size: Optional[Tuple[int, int]] = None,
+        core_attention_bias_type: str = "no_bias",
+        core_attention_bias: Optional[torch.Tensor] = None,
+        alibi_slopes: Optional[torch.Tensor] = None,
+        cp_group: Optional[Any] = None,
+        cp_global_ranks: Optional[List[int]] = None,
+        cp_stream: Optional[torch.cuda.Stream] = None,
+        cp_comm_type: str = "p2p",
+        fp8: bool = False,
+        fp8_meta: Optional[Dict[str, Any]] = None,
+        quantizers: Optional[Any] = None,
+        fused_attention_backend: Optional[Any] = None,
+        inference_params: Optional[Any] = None,
+        softmax_offset: torch.Tensor = None,
+        fp8_output: bool = False,
+    ) -> torch.Tensor:
+        raise NotImplementedError("Subclasses must implement forward()")
+
+    @property
+    def backend_name(self) -> str:
+        return self.__class__.__name__
 
 class TEFLModule:
     def __init__(self, manager=None):
@@ -1224,6 +1337,58 @@ class TEFLModule:
             attention_type=attention_type,
             layer_number=layer_number,
             deterministic=deterministic,
+        )
+
+    def unfused_dot_product_attention(
+        self,
+        softmax_scale: float,
+        attention_type: str = "self",
+        attention_dropout: float = 0.0,
+        attention_dropout_ctx: Optional[Callable] = None,
+        layer_number: Optional[int] = None,
+        softmax_type: str = "vanilla",
+        return_max_logit: Optional[bool] = False,
+    ) -> "UnfusedDotProductAttentionBase":
+        """
+        Get UnfusedDotProductAttention implementation through OpManager.
+        """
+        unfused_attn_class = self._manager.call("get_unfused_dot_product_attention_class")
+
+        return unfused_attn_class(
+            softmax_scale=softmax_scale,
+            attention_type=attention_type,
+            attention_dropout=attention_dropout,
+            attention_dropout_ctx=attention_dropout_ctx,
+            layer_number=layer_number,
+            softmax_type=softmax_type,
+            return_max_logit=return_max_logit,
+        )
+
+    def fused_attention(
+        self,
+        softmax_scale: float,
+        attention_dropout: float = 0.0,
+        attention_dropout_ctx: Optional[Callable] = None,
+        attention_type: str = "self",
+        layer_number: Optional[int] = None,
+        deterministic: bool = False,
+        softmax_type: str = "vanilla",
+        return_max_logit: Optional[bool] = False,
+    ) -> "FusedAttentionBase":
+        """
+        Get FusedAttention implementation through OpManager.
+        """
+        fused_attn_class = self._manager.call("get_fused_attention_class")
+
+        return fused_attn_class(
+            softmax_scale=softmax_scale,
+            attention_dropout=attention_dropout,
+            attention_dropout_ctx=attention_dropout_ctx,
+            attention_type=attention_type,
+            layer_number=layer_number,
+            deterministic=deterministic,
+            softmax_type=softmax_type,
+            return_max_logit=return_max_logit,
         )
 
     def __repr__(self) -> str:

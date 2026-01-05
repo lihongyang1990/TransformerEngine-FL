@@ -212,7 +212,6 @@ class AttnFuncFL(torch.autograd.Function):
             None,
         )
 
-
 class FlashAttentionFL(FlashAttentionBase):
     def __init__(
         self,
@@ -384,3 +383,27 @@ class FlashAttentionFL(FlashAttentionBase):
             )
 
         return output.view(*output.shape[:-2], -1)
+
+from transformer_engine.plugin.core.ops import UnfusedDotProductAttentionBase, FusedAttentionBase
+
+class UnfusedDotProductAttentionFL(UnfusedDotProductAttentionBase):
+    """
+    FlagOS placeholder implementation of UnfusedDotProductAttention.
+    This is a virtual class - not implemented yet.
+    """
+    def forward(self, *args, **kwargs):
+        raise NotImplementedError(
+            "UnfusedDotProductAttentionFL not yet implemented for FlagOS backend. "
+            "Please use FlashAttentionFL instead."
+        )
+
+class FusedAttentionFL(FusedAttentionBase):
+    """
+    FlagOS placeholder implementation of FusedAttention.
+    This is a virtual class - not implemented yet.
+    """
+    def forward(self, *args, **kwargs):
+        raise NotImplementedError(
+            "FusedAttentionFL not yet implemented for FlagOS backend. "
+            "Please use FlashAttentionFL instead."
+        )

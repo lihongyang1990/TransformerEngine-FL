@@ -202,6 +202,14 @@ class CUDABackend(TEFLBackendBase):
         from .flash_attention import FlashAttentionCUDA
         return FlashAttentionCUDA
 
+    def get_unfused_dot_product_attention_class(self):
+        from .flash_attention import UnfusedDotProductAttentionCUDA
+        return UnfusedDotProductAttentionCUDA
+
+    def get_fused_attention_class(self):
+        from .flash_attention import FusedAttentionCUDA
+        return FusedAttentionCUDA
+
     def quantize(
         self,
         tensor: torch.Tensor,

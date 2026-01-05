@@ -32,6 +32,14 @@ class FlagOSBackend(TEFLBackendBase):
         from .attention.dot_product_attention.backends import FlashAttentionFL
         return FlashAttentionFL
 
+    def get_unfused_dot_product_attention_class(self):
+        from .attention.dot_product_attention.backends import UnfusedDotProductAttentionFL
+        return UnfusedDotProductAttentionFL
+
+    def get_fused_attention_class(self):
+        from .attention.dot_product_attention.backends import FusedAttentionFL
+        return FusedAttentionFL
+
     def generic_gemm(
         self,
         A: torch.Tensor,

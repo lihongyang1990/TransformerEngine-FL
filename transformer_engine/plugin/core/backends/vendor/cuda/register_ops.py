@@ -195,8 +195,10 @@ def register_builtins(registry) -> None:
         OpImpl(op_name="create_comm_overlap", impl_id="vendor.cuda", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.create_comm_overlap, is_avail), vendor="CUDA", priority=100),
         OpImpl(op_name="create_comm_overlap_p2p", impl_id="vendor.cuda", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.create_comm_overlap_p2p, is_avail), vendor="CUDA", priority=100),
 
-        # FlashAttention class getter
+        # Attention class getters
         OpImpl(op_name="get_flash_attention_class", impl_id="vendor.cuda", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.get_flash_attention_class, is_avail), vendor="CUDA", priority=100),
+        OpImpl(op_name="get_unfused_dot_product_attention_class", impl_id="vendor.cuda", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.get_unfused_dot_product_attention_class, is_avail), vendor="CUDA", priority=100),
+        OpImpl(op_name="get_fused_attention_class", impl_id="vendor.cuda", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.get_fused_attention_class, is_avail), vendor="CUDA", priority=100),
     ]
 
     registry.register_many(impls)

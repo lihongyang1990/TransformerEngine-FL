@@ -47,8 +47,21 @@ def register_builtins(registry) -> None:
         OpImpl(op_name="multi_tensor_adam", impl_id="default.flagos", kind=BackendImplKind.DEFAULT, fn=_bind_is_available(backend.multi_tensor_adam, is_avail), vendor=None, priority=150),
         OpImpl(op_name="multi_tensor_l2norm", impl_id="default.flagos", kind=BackendImplKind.DEFAULT, fn=_bind_is_available(backend.multi_tensor_l2norm, is_avail), vendor=None, priority=150),
 
-        # FlashAttention class getter
+        # Attention class getters
         OpImpl(op_name="get_flash_attention_class", impl_id="default.flagos", kind=BackendImplKind.DEFAULT, fn=_bind_is_available(backend.get_flash_attention_class, is_avail), vendor=None, priority=150),
+        OpImpl(op_name="get_unfused_dot_product_attention_class", impl_id="default.flagos", kind=BackendImplKind.DEFAULT, fn=_bind_is_available(backend.get_unfused_dot_product_attention_class, is_avail), vendor=None, priority=150),
+        OpImpl(op_name="get_fused_attention_class", impl_id="default.flagos", kind=BackendImplKind.DEFAULT, fn=_bind_is_available(backend.get_fused_attention_class, is_avail), vendor=None, priority=150),
+
+        # Fused attention backend
+        OpImpl(op_name="get_fused_attn_backend", impl_id="default.flagos", kind=BackendImplKind.DEFAULT, fn=_bind_is_available(backend.get_fused_attn_backend, is_avail), vendor=None, priority=150),
+
+        # Library version getters
+        OpImpl(op_name="get_cublasLt_version", impl_id="default.flagos", kind=BackendImplKind.DEFAULT, fn=_bind_is_available(backend.get_cublasLt_version, is_avail), vendor=None, priority=150),
+        OpImpl(op_name="get_cudnn_version", impl_id="default.flagos", kind=BackendImplKind.DEFAULT, fn=_bind_is_available(backend.get_cudnn_version, is_avail), vendor=None, priority=150),
+        OpImpl(op_name="get_num_cublas_streams", impl_id="default.flagos", kind=BackendImplKind.DEFAULT, fn=_bind_is_available(backend.get_num_cublas_streams, is_avail), vendor=None, priority=150),
+
+        # FP8 metadata
+        OpImpl(op_name="create_fp8_tensor_meta", impl_id="default.flagos", kind=BackendImplKind.DEFAULT, fn=_bind_is_available(backend.create_fp8_tensor_meta, is_avail), vendor=None, priority=150),
     ]
 
     registry.register_many(impls)

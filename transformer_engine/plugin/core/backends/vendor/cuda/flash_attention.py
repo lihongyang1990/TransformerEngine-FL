@@ -7,7 +7,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from transformer_engine.plugin.core.ops import FlashAttentionBase
+from transformer_engine.plugin.core.ops import (
+    FlashAttentionBase,
+    UnfusedDotProductAttentionBase,
+    FusedAttentionBase,
+)
 
 
 class FlashAttentionCUDA(FlashAttentionBase):
@@ -124,3 +128,122 @@ class FlashAttentionCUDA(FlashAttentionBase):
             flash_attention_backend=flash_attention_backend,
             fp8_output=fp8_output,
         )
+
+
+class UnfusedDotProductAttentionCUDA(UnfusedDotProductAttentionBase):
+    """CUDA backend for UnfusedDotProductAttention - wraps native implementation."""
+
+    def __init__(
+        self,
+        softmax_scale: float,
+        attention_type: str = "self",
+        attention_dropout: float = 0.0,
+        attention_dropout_ctx: Optional[Callable] = None,
+        layer_number: Optional[int] = None,
+        softmax_type: str = "vanilla",
+        return_max_logit: Optional[bool] = False,
+    ) -> None:
+        super().__init__(
+            softmax_scale=softmax_scale,
+            attention_type=attention_type,
+            attention_dropout=attention_dropout,
+            attention_dropout_ctx=attention_dropout_ctx,
+            layer_number=layer_number,
+            softmax_type=softmax_type,
+            return_max_logit=return_max_logit,
+        )
+
+        self._init_params = {
+            'softmax_scale': softmax_scale,
+            'attention_type': attention_type,
+            'attention_dropout': attention_dropout,
+            'attention_dropout_ctx': attention_dropout_ctx or nullcontext,
+            'layer_number': layer_number,
+            'softmax_type': softmax_type,
+            'return_max_logit': return_max_logit,
+        }
+        self._native_impl = None
+
+    def _ensure_native_impl(self):
+        """Lazy initialization of native UnfusedDotProductAttention."""
+        if self._native_impl is not None:
+            return
+
+        try:
+            from transformer_engine.pytorch.attention.dot_product_attention.backends import (
+                UnfusedDotProductAttention as UnfusedNative,
+            )
+            self._native_impl = UnfusedNative(**self._init_params)
+        except ImportError as e:
+            raise RuntimeError(
+                f"Failed to import native UnfusedDotProductAttention: {e}."
+            )
+
+    @property
+    def backend_name(self) -> str:
+        return "cuda"
+
+    def forward(self, *args, **kwargs) -> torch.Tensor:
+        self._ensure_native_impl()
+        return self._native_impl(*args, **kwargs)
+
+
+class FusedAttentionCUDA(FusedAttentionBase):
+    """CUDA backend for FusedAttention - wraps native implementation."""
+
+    def __init__(
+        self,
+        softmax_scale: float,
+        attention_dropout: float = 0.0,
+        attention_dropout_ctx: Optional[Callable] = None,
+        attention_type: str = "self",
+        layer_number: Optional[int] = None,
+        deterministic: bool = False,
+        softmax_type: str = "vanilla",
+        return_max_logit: Optional[bool] = False,
+    ) -> None:
+        super().__init__(
+            softmax_scale=softmax_scale,
+            attention_dropout=attention_dropout,
+            attention_dropout_ctx=attention_dropout_ctx,
+            attention_type=attention_type,
+            layer_number=layer_number,
+            deterministic=deterministic,
+            softmax_type=softmax_type,
+            return_max_logit=return_max_logit,
+        )
+
+        self._init_params = {
+            'softmax_scale': softmax_scale,
+            'attention_dropout': attention_dropout,
+            'attention_dropout_ctx': attention_dropout_ctx or nullcontext,
+            'attention_type': attention_type,
+            'layer_number': layer_number,
+            'deterministic': deterministic,
+            'softmax_type': softmax_type,
+            'return_max_logit': return_max_logit,
+        }
+        self._native_impl = None
+
+    def _ensure_native_impl(self):
+        """Lazy initialization of native FusedAttention."""
+        if self._native_impl is not None:
+            return
+
+        try:
+            from transformer_engine.pytorch.attention.dot_product_attention.backends import (
+                FusedAttention as FusedNative,
+            )
+            self._native_impl = FusedNative(**self._init_params)
+        except ImportError as e:
+            raise RuntimeError(
+                f"Failed to import native FusedAttention: {e}."
+            )
+
+    @property
+    def backend_name(self) -> str:
+        return "cuda"
+
+    def forward(self, *args, **kwargs) -> torch.Tensor:
+        self._ensure_native_impl()
+        return self._native_impl(*args, **kwargs)

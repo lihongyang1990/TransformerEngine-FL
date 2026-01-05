@@ -8,7 +8,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from transformer_engine.plugin.core.ops import FlashAttentionBase
+from transformer_engine.plugin.core.ops import (
+    FlashAttentionBase,
+    UnfusedDotProductAttentionBase,
+    FusedAttentionBase,
+)
 
 
 class FlashAttentionTorch(FlashAttentionBase):
@@ -349,5 +353,360 @@ class FlashAttentionTorch(FlashAttentionBase):
             # Flatten the last two dimensions (heads, dim) -> (heads * dim)
             # to match the output format of other backends
             output = output.contiguous().view(*output.shape[:-2], -1)
+
+        return output
+
+
+class UnfusedDotProductAttentionTorch(UnfusedDotProductAttentionBase):
+    """
+    Reference PyTorch implementation of UnfusedDotProductAttention.
+    BMM1 -> softmax + dropout -> BMM2
+    """
+
+    def __init__(
+        self,
+        softmax_scale: float,
+        attention_type: str = "self",
+        attention_dropout: float = 0.0,
+        attention_dropout_ctx: Optional[Callable] = None,
+        layer_number: Optional[int] = None,
+        softmax_type: str = "vanilla",
+        return_max_logit: Optional[bool] = False,
+    ) -> None:
+        super().__init__(
+            softmax_scale=softmax_scale,
+            attention_type=attention_type,
+            attention_dropout=attention_dropout,
+            attention_dropout_ctx=attention_dropout_ctx,
+            layer_number=layer_number,
+            softmax_type=softmax_type,
+            return_max_logit=return_max_logit,
+        )
+        self.dropout = torch.nn.Dropout(attention_dropout)
+
+    @property
+    def backend_name(self) -> str:
+        return "torch_unfused"
+
+    def _convert_to_sbhd(
+        self,
+        tensor: torch.Tensor,
+        layout: str,
+    ) -> torch.Tensor:
+        """Convert tensor to [seq, batch, heads, dim] format."""
+        layout = layout.lower()
+
+        if layout in ("sbhd", "sbh3d", "sb3hd"):
+            return tensor
+        elif layout in ("bshd", "bsh3d", "bs3hd"):
+            return tensor.transpose(0, 1)
+        else:
+            raise ValueError(f"Unsupported qkv_layout: {layout}")
+
+    def _convert_from_sbhd(
+        self,
+        tensor: torch.Tensor,
+        layout: str,
+    ) -> torch.Tensor:
+        """Convert tensor from [seq, batch, heads, dim] back to original layout."""
+        layout = layout.lower()
+
+        if layout in ("sbhd", "sbh3d", "sb3hd"):
+            return tensor
+        elif layout in ("bshd", "bsh3d", "bs3hd"):
+            return tensor.transpose(0, 1)
+        else:
+            raise ValueError(f"Unsupported qkv_layout: {layout}")
+
+    def _apply_causal_mask(
+        self,
+        scores: torch.Tensor,
+        seq_len_q: int,
+        seq_len_kv: int,
+    ) -> torch.Tensor:
+        """Apply causal mask to attention scores."""
+        mask = torch.triu(
+            torch.ones(seq_len_q, seq_len_kv, device=scores.device, dtype=torch.bool),
+            diagonal=1
+        )
+        scores = scores.masked_fill(mask, float('-inf'))
+        return scores
+
+    def forward(
+        self,
+        _alibi_cache: Dict[str, Any],
+        query_layer: torch.Tensor,
+        key_layer: torch.Tensor,
+        value_layer: torch.Tensor,
+        qkv_layout: str = "sbh3d",
+        cu_seqlens_q: Optional[torch.Tensor] = None,
+        cu_seqlens_kv: Optional[torch.Tensor] = None,
+        max_seqlen_q: Optional[torch.Tensor] = None,
+        max_seqlen_kv: Optional[torch.Tensor] = None,
+        attn_mask_type: str = "causal",
+        attention_mask: Optional[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]] = None,
+        window_size: Optional[Tuple[int, int]] = None,
+        core_attention_bias_type: str = "no_bias",
+        core_attention_bias: Optional[torch.Tensor] = None,
+        alibi_slopes: Optional[torch.Tensor] = None,
+        inference_params: Optional[Any] = None,
+        softmax_offset: torch.Tensor = None,
+        fp8: bool = False,
+        fp8_meta: Optional[Dict[str, Any]] = None,
+        quantizers: Optional[Any] = None,
+        fp8_output: bool = False,
+    ) -> torch.Tensor:
+        """Unfused attention forward pass using pure PyTorch."""
+        if fp8:
+            raise NotImplementedError("FP8 is not supported in PyTorch reference backend")
+        if alibi_slopes is not None:
+            raise NotImplementedError("ALiBi slopes are not supported in this implementation")
+        if core_attention_bias_type != "no_bias":
+            raise NotImplementedError("Attention bias is not supported in this implementation")
+        if window_size is not None:
+            raise NotImplementedError("Sliding window attention is not supported in this implementation")
+
+        # Convert to sbhd format
+        query = self._convert_to_sbhd(query_layer, qkv_layout)
+        key = self._convert_to_sbhd(key_layer, qkv_layout)
+        value = self._convert_to_sbhd(value_layer, qkv_layout)
+
+        # Get dimensions: [seq, batch, heads, dim]
+        seq_len_q, batch_size, num_heads_q, head_dim = query.shape
+        seq_len_kv = key.shape[0]
+        num_heads_kv = key.shape[2]
+
+        # Handle GQA (Grouped Query Attention)
+        if num_heads_q != num_heads_kv:
+            assert num_heads_q % num_heads_kv == 0, \
+                "num_heads_q must be divisible by num_heads_kv for GQA"
+            num_groups = num_heads_q // num_heads_kv
+            key = key.repeat_interleave(num_groups, dim=2)
+            value = value.repeat_interleave(num_groups, dim=2)
+
+        # Reshape for batched matrix multiplication
+        # [seq, batch, heads, dim] -> [batch * heads, seq, dim]
+        query = query.permute(1, 2, 0, 3).reshape(batch_size * num_heads_q, seq_len_q, head_dim)
+        key = key.permute(1, 2, 0, 3).reshape(batch_size * num_heads_q, seq_len_kv, head_dim)
+        value = value.permute(1, 2, 0, 3).reshape(batch_size * num_heads_q, seq_len_kv, head_dim)
+
+        # Compute attention scores: Q @ K^T
+        # [batch * heads, seq_q, dim] @ [batch * heads, dim, seq_kv] -> [batch * heads, seq_q, seq_kv]
+        scores = torch.bmm(query, key.transpose(1, 2)) * self.softmax_scale
+
+        # Reshape back to apply masks
+        # [batch * heads, seq_q, seq_kv] -> [batch, heads, seq_q, seq_kv]
+        scores = scores.view(batch_size, num_heads_q, seq_len_q, seq_len_kv)
+
+        # Apply causal mask
+        if "causal" in attn_mask_type:
+            scores = self._apply_causal_mask(scores, seq_len_q, seq_len_kv)
+
+        # Apply custom attention mask
+        if attention_mask is not None:
+            if isinstance(attention_mask, tuple):
+                mask = attention_mask[0]
+            else:
+                mask = attention_mask
+
+            # Handle boolean masks
+            if mask.dtype == torch.bool:
+                scores = scores.masked_fill(mask, float('-inf'))
+            else:
+                scores = scores + mask
+
+        # Softmax
+        # [batch, heads, seq_q, seq_kv]
+        attention_probs = F.softmax(scores, dim=-1)
+
+        # Apply dropout
+        with self.attention_dropout_ctx():
+            attention_probs = self.dropout(attention_probs)
+
+        # Reshape for matmul
+        # [batch, heads, seq_q, seq_kv] -> [batch * heads, seq_q, seq_kv]
+        attention_probs = attention_probs.view(batch_size * num_heads_q, seq_len_q, seq_len_kv)
+
+        # Compute output: attention_probs @ V
+        # [batch * heads, seq_q, seq_kv] @ [batch * heads, seq_kv, dim] -> [batch * heads, seq_q, dim]
+        output = torch.bmm(attention_probs, value)
+
+        # Reshape and convert back to original layout
+        # [batch * heads, seq_q, dim] -> [seq_q, batch, heads, dim]
+        output = output.view(batch_size, num_heads_q, seq_len_q, head_dim)
+        output = output.permute(2, 0, 1, 3).contiguous()
+
+        # Convert back to original layout
+        output = self._convert_from_sbhd(output, qkv_layout)
+
+        # Flatten last two dimensions
+        # [seq, batch, heads, dim] -> [seq, batch, heads * dim]
+        output = output.view(*output.shape[:-2], -1)
+
+        return output
+
+
+class FusedAttentionTorch(FusedAttentionBase):
+    """
+    Reference PyTorch implementation of FusedAttention using PyTorch SDPA.
+    """
+
+    def __init__(
+        self,
+        softmax_scale: float,
+        attention_dropout: float = 0.0,
+        attention_dropout_ctx: Optional[Callable] = None,
+        attention_type: str = "self",
+        layer_number: Optional[int] = None,
+        deterministic: bool = False,
+        softmax_type: str = "vanilla",
+        return_max_logit: Optional[bool] = False,
+    ) -> None:
+        super().__init__(
+            softmax_scale=softmax_scale,
+            attention_dropout=attention_dropout,
+            attention_dropout_ctx=attention_dropout_ctx,
+            attention_type=attention_type,
+            layer_number=layer_number,
+            deterministic=deterministic,
+            softmax_type=softmax_type,
+            return_max_logit=return_max_logit,
+        )
+
+    @property
+    def backend_name(self) -> str:
+        return "torch_fused_sdpa"
+
+    def _convert_to_bhsd(
+        self,
+        tensor: torch.Tensor,
+        layout: str,
+    ) -> torch.Tensor:
+        """Convert tensor to [batch, heads, seq, dim] format."""
+        layout = layout.lower()
+
+        if layout in ("sbhd", "sbh3d", "sb3hd"):
+            # [seq, batch, heads, dim] -> [batch, heads, seq, dim]
+            return tensor.permute(1, 2, 0, 3)
+        elif layout in ("bshd", "bsh3d", "bs3hd"):
+            # [batch, seq, heads, dim] -> [batch, heads, seq, dim]
+            return tensor.permute(0, 2, 1, 3)
+        elif layout == "bhsd":
+            return tensor
+        else:
+            raise ValueError(f"Unsupported qkv_layout: {layout}")
+
+    def _convert_from_bhsd(
+        self,
+        tensor: torch.Tensor,
+        layout: str,
+    ) -> torch.Tensor:
+        """Convert tensor from [batch, heads, seq, dim] back to original layout."""
+        layout = layout.lower()
+
+        if layout in ("sbhd", "sbh3d", "sb3hd"):
+            # [batch, heads, seq, dim] -> [seq, batch, heads, dim]
+            return tensor.permute(2, 0, 1, 3)
+        elif layout in ("bshd", "bsh3d", "bs3hd"):
+            # [batch, heads, seq, dim] -> [batch, seq, heads, dim]
+            return tensor.permute(0, 2, 1, 3)
+        elif layout == "bhsd":
+            return tensor
+        else:
+            raise ValueError(f"Unsupported qkv_layout: {layout}")
+
+    def forward(
+        self,
+        query_layer: torch.Tensor,
+        key_layer: torch.Tensor,
+        value_layer: torch.Tensor,
+        qkv_layout: str = "sbh3d",
+        cu_seqlens_q: Optional[torch.Tensor] = None,
+        cu_seqlens_kv: Optional[torch.Tensor] = None,
+        max_seqlen_q: Optional[int] = None,
+        max_seqlen_kv: Optional[int] = None,
+        attn_mask_type: str = "causal",
+        attention_mask: Optional[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]] = None,
+        window_size: Optional[Tuple[int, int]] = None,
+        core_attention_bias_type: str = "no_bias",
+        core_attention_bias: Optional[torch.Tensor] = None,
+        alibi_slopes: Optional[torch.Tensor] = None,
+        cp_group: Optional[Any] = None,
+        cp_global_ranks: Optional[List[int]] = None,
+        cp_stream: Optional[torch.cuda.Stream] = None,
+        cp_comm_type: str = "p2p",
+        fp8: bool = False,
+        fp8_meta: Optional[Dict[str, Any]] = None,
+        quantizers: Optional[Any] = None,
+        fused_attention_backend: Optional[Any] = None,
+        inference_params: Optional[Any] = None,
+        softmax_offset: torch.Tensor = None,
+        fp8_output: bool = False,
+    ) -> torch.Tensor:
+        """Fused attention forward pass using PyTorch SDPA."""
+        if fp8:
+            raise NotImplementedError("FP8 is not supported in PyTorch SDPA backend")
+        if cp_group is not None:
+            raise NotImplementedError("Context parallelism is not supported")
+        if alibi_slopes is not None:
+            raise NotImplementedError("ALiBi slopes are not supported")
+        if core_attention_bias_type != "no_bias":
+            raise NotImplementedError("Attention bias is not supported")
+        if window_size is not None:
+            raise NotImplementedError("Sliding window attention is not supported")
+
+        # Convert to bhsd format for PyTorch SDPA
+        query = self._convert_to_bhsd(query_layer, qkv_layout)
+        key = self._convert_to_bhsd(key_layer, qkv_layout)
+        value = self._convert_to_bhsd(value_layer, qkv_layout)
+
+        # Get dimensions
+        batch_size, num_heads_q, seq_len_q, head_dim = query.shape
+        num_heads_kv = key.shape[1]
+
+        # Handle GQA
+        if num_heads_q != num_heads_kv:
+            assert num_heads_q % num_heads_kv == 0
+            num_groups = num_heads_q // num_heads_kv
+            key = key.repeat_interleave(num_groups, dim=1)
+            value = value.repeat_interleave(num_groups, dim=1)
+
+        # Prepare attention mask
+        attn_mask = None
+        is_causal = False
+
+        if "causal" in attn_mask_type and attention_mask is None:
+            is_causal = True
+        elif attention_mask is not None:
+            if isinstance(attention_mask, tuple):
+                attn_mask = attention_mask[0]
+            else:
+                attn_mask = attention_mask
+
+            # Convert boolean mask to additive mask
+            if attn_mask.dtype == torch.bool:
+                attn_mask_float = torch.zeros_like(attn_mask, dtype=query.dtype)
+                attn_mask_float.masked_fill_(attn_mask, float('-inf'))
+                attn_mask = attn_mask_float
+
+        # Use PyTorch's scaled_dot_product_attention
+        with self.attention_dropout_ctx():
+            dropout_p = self.attention_dropout if self.training else 0.0
+
+            output = F.scaled_dot_product_attention(
+                query=query,
+                key=key,
+                value=value,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=self.softmax_scale,
+            )
+
+        # Convert back to original layout
+        output = self._convert_from_bhsd(output, qkv_layout)
+
+        # Flatten last two dimensions
+        output = output.contiguous().view(*output.shape[:-2], -1)
 
         return output
