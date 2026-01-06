@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Type
 from enum import IntEnum
 from contextlib import nullcontext
 import os
+import traceback
 import torch
 
 from .logger_manager import get_logger
@@ -1267,16 +1268,53 @@ class FlashAttentionBase(torch.nn.Module, ABC):
             except:
                 continue
 
-        last_error = None
+        # Try primary implementation first and capture any error
+        primary_error = None
+        try:
+            result = self._forward_impl(
+                query_layer=query_layer,
+                key_layer=key_layer,
+                value_layer=value_layer,
+                attention_mask=attention_mask,
+                qkv_layout=qkv_layout,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_kv=cu_seqlens_kv,
+                max_seqlen_q=max_seqlen_q,
+                max_seqlen_kv=max_seqlen_kv,
+                attn_mask_type=attn_mask_type,
+                window_size=window_size,
+                alibi_slopes=alibi_slopes,
+                cp_group=cp_group,
+                cp_global_ranks=cp_global_ranks,
+                cp_stream=cp_stream,
+                cp_comm_type=cp_comm_type,
+                fp8=fp8,
+                fp8_meta=fp8_meta,
+                quantizers=quantizers,
+                inference_params=inference_params,
+                flash_attention_backend=flash_attention_backend,
+                fp8_output=fp8_output,
+            )
+            # Primary implementation succeeded
+            return result
+        except Exception as e:
+            primary_error = e
+            # Log the primary failure
+            error_summary = f"{type(e).__name__}: {str(e)}"
+            logger.warning_once(
+                f"Implementation '{current_impl_id}' failed for op '{layer_key}' "
+                f" - {error_summary}"
+            )
+            # Log full traceback if verbose mode is enabled
+            if os.getenv("TE_FL_VERBOSE_ERROR", "0") == "1":
+                error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+                logger.warning(f"Detailed traceback for '{current_impl_id}':\n{error_traceback}")
+
+        last_error = primary_error
 
         for idx, impl in enumerate(candidates):
-            # Skip the current implementation (avoid re-trying what just failed)
+            # Skip the current implementation (already tried above)
             if impl.impl_id == current_impl_id:
-                # Log that we're skipping the failed implementation
-                logger.warning_once(
-                    f"Implementation '{impl.impl_id}' failed for op '{layer_key}' "
-                    f"(primary attempt failed, trying fallback)"
-                )
                 continue
 
             try:
@@ -1332,15 +1370,24 @@ class FlashAttentionBase(torch.nn.Module, ABC):
                     for c in candidates[idx+1:]
                 )
 
+                # Format error summary
+                error_summary = f"{type(e).__name__}: {str(e)}"
+
                 if has_more_candidates:
                     logger.warning_once(
-                        f"Implementation '{impl.impl_id}' failed for op '{layer_key}': {e}"
+                        f"Implementation '{impl.impl_id}' failed for op '{layer_key}' - {error_summary}"
                     )
                 else:
                     # Last candidate failed
-                    logger.error(
-                        f"Last implementation '{impl.impl_id}' failed for op '{layer_key}': {e}"
+                    logger.error_once(
+                        f"Last implementation '{impl.impl_id}' failed for op '{layer_key}' - {error_summary}"
                     )
+
+                # Log full traceback if verbose mode is enabled
+                if os.getenv("TE_FL_VERBOSE_ERROR", "0") == "1":
+                    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+                    log_func = logger.error if not has_more_candidates else logger.warning
+                    log_func(f"Detailed traceback for '{impl.impl_id}':\n{error_traceback}")
 
         # All implementations failed
         logger.error(
