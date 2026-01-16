@@ -112,6 +112,8 @@ def register_builtins(registry) -> None:
         OpImpl(op_name="moe_unpermute_bwd", impl_id="vendor.hygon", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.moe_unpermute_bwd, is_avail), vendor="HYGON", priority=100),
 
         # Fused attention
+        OpImpl(op_name="fa_prepare_fwd", impl_id="vendor.hygon", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.fa_prepare_fwd, is_avail), vendor="HYGON", priority=100),
+        OpImpl(op_name="fa_prepare_bwd", impl_id="vendor.hygon", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.fa_prepare_bwd, is_avail), vendor="HYGON", priority=100),
 
         # KV cache
         OpImpl(op_name="copy_to_kv_cache", impl_id="vendor.hygon", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.copy_to_kv_cache, is_avail), vendor="HYGON", priority=100),
@@ -188,6 +190,8 @@ def register_builtins(registry) -> None:
         # FlashAttention class getter
         OpImpl(op_name="get_flash_attention_class", impl_id="vendor.hygon", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.get_flash_attention_class, is_avail), vendor="HYGON", priority=100),
 
+        # Attention backend selection
+        OpImpl(op_name="get_attention_backend", impl_id="vendor.hygon", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.get_attention_backend, is_avail), vendor="HYGON", priority=100),
     ]
 
     registry.register_many(impls)
