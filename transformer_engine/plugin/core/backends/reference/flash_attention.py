@@ -10,73 +10,13 @@ import torch.nn.functional as F
 import torch.distributed as dist
 
 from transformer_engine.plugin.core.ops import FlashAttentionBase
-
-
-def _all_gather_along_seq(
-    tensor: torch.Tensor,
-    cp_group: Any,
-    seq_dim: int = 2,
-) -> torch.Tensor:
-    """All-gather tensor along sequence dimension across CP group."""
-    world_size = dist.get_world_size(cp_group)
-    if world_size == 1:
-        return tensor
-
-    # Ensure tensor is contiguous before all_gather
-    tensor = tensor.contiguous()
-
-    # Use autograd-compatible all_gather
-    gathered_list = [torch.empty_like(tensor) for _ in range(world_size)]
-
-    # Wrap in a custom autograd function to handle backward pass
-    class AllGatherFunc(torch.autograd.Function):
-        @staticmethod
-        def forward(ctx, input_tensor):
-            dist.all_gather(gathered_list, input_tensor, group=cp_group)
-            ctx.cp_group = cp_group
-            ctx.world_size = world_size
-            return torch.cat(gathered_list, dim=seq_dim)
-
-        @staticmethod
-        def backward(ctx, grad_output):
-            # In backward, we need to reduce_scatter the gradients
-            # Split the gradient and take only the local chunk
-            grad_chunks = torch.chunk(grad_output, ctx.world_size, dim=seq_dim)
-
-            # Reduce scatter: sum gradients from all ranks and scatter
-            local_grad = torch.zeros_like(grad_chunks[0])
-            grad_list = [torch.empty_like(grad_chunks[0]) for _ in range(ctx.world_size)]
-            for i, chunk in enumerate(grad_chunks):
-                grad_list[i].copy_(chunk)
-
-            dist.reduce_scatter(local_grad, grad_list, group=ctx.cp_group)
-            return local_grad
-
-    return AllGatherFunc.apply(tensor)
-
-
-def _reduce_scatter_along_seq(
-    tensor: torch.Tensor,
-    cp_group: Any,
-    seq_dim: int = 2,
-) -> torch.Tensor:
-    """Reduce-scatter tensor along sequence dimension across CP group."""
-    world_size = dist.get_world_size(cp_group)
-    if world_size == 1:
-        return tensor
-
-    # Ensure tensor is contiguous before reduce_scatter
-    tensor = tensor.contiguous()
-    seq_len = tensor.shape[seq_dim]
-    chunk_size = seq_len // world_size
-
-    output = torch.empty(
-        *tensor.shape[:seq_dim], chunk_size, *tensor.shape[seq_dim + 1:],
-        dtype=tensor.dtype, device=tensor.device
-    )
-
-    dist.reduce_scatter_tensor(output, tensor, group=cp_group)
-    return output
+from transformer_engine.plugin.core.backends.fa_utils import (
+    all_gather_along_seq,
+    reduce_scatter_along_seq,
+    create_cp_causal_mask,
+    create_cp_window_mask,
+    get_cp_info,
+)
 
 
 class FlashAttentionTorch(FlashAttentionBase):
@@ -297,14 +237,7 @@ class FlashAttentionTorch(FlashAttentionBase):
             raise NotImplementedError("ALiBi slopes are not supported in PyTorch SDPA backend")
 
         query_original_shape = query_layer.shape
-        use_cp = cp_group is not None
-
-        if use_cp:
-            cp_size = dist.get_world_size(cp_group)
-            cp_rank = dist.get_rank(cp_group)
-        else:
-            cp_size = 1
-            cp_rank = 0
+        cp_size, cp_rank, use_cp = get_cp_info(cp_group)
 
         is_standard_4d = query_layer.dim() == 4
 
@@ -341,11 +274,9 @@ class FlashAttentionTorch(FlashAttentionBase):
         local_seq_len_q = seq_len_q
 
         if use_cp:
-            # Ensure tensors are contiguous before all_gather operations
-            key = key.contiguous()
-            value = value.contiguous()
-            key = _all_gather_along_seq(key, cp_group, seq_dim=2)
-            value = _all_gather_along_seq(value, cp_group, seq_dim=2)
+            # All-gather key/value along sequence dimension for full context
+            key = all_gather_along_seq(key, cp_group, seq_dim=2)
+            value = all_gather_along_seq(value, cp_group, seq_dim=2)
 
         num_heads_kv = key.shape[1]
         seq_len_kv = key.shape[2]
@@ -372,13 +303,10 @@ class FlashAttentionTorch(FlashAttentionBase):
 
         if attn_mask_type == "causal":
             if use_cp:
-                # Vectorized causal mask creation for CP
-                q_start = cp_rank * local_seq_len_q
-                q_indices = torch.arange(local_seq_len_q, device=query.device, dtype=torch.long).unsqueeze(1) + q_start
-                kv_indices = torch.arange(seq_len_kv, device=query.device, dtype=torch.long).unsqueeze(0)
-                causal_mask = torch.zeros(local_seq_len_q, seq_len_kv, dtype=query.dtype, device=query.device)
-                causal_mask.masked_fill_(kv_indices > q_indices, float('-inf'))
-
+                # Use shared utility for CP causal mask creation
+                causal_mask = create_cp_causal_mask(
+                    local_seq_len_q, seq_len_kv, cp_rank, query.device, query.dtype
+                )
                 if attn_mask is not None:
                     if attn_mask.dim() == 2:
                         attn_mask = attn_mask + causal_mask
@@ -408,17 +336,10 @@ class FlashAttentionTorch(FlashAttentionBase):
 
         if window_size is not None and not is_causal:
             if use_cp:
-                # Vectorized window mask creation for CP
-                left_window, right_window = window_size
-                q_start = cp_rank * local_seq_len_q
-                q_indices = torch.arange(local_seq_len_q, device=query.device, dtype=torch.long).unsqueeze(1) + q_start
-                kv_indices = torch.arange(seq_len_kv, device=query.device, dtype=torch.long).unsqueeze(0)
-
-                window_mask = torch.zeros(local_seq_len_q, seq_len_kv, dtype=query.dtype, device=query.device)
-                if left_window >= 0:
-                    window_mask.masked_fill_(kv_indices < q_indices - left_window, float('-inf'))
-                if right_window >= 0:
-                    window_mask.masked_fill_(kv_indices > q_indices + right_window, float('-inf'))
+                # Use shared utility for CP window mask creation
+                window_mask = create_cp_window_mask(
+                    local_seq_len_q, seq_len_kv, cp_rank, window_size, query.device, query.dtype
+                )
             else:
                 window_mask = self._create_sliding_window_mask(
                     seq_len_q=seq_len_q,

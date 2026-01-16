@@ -9,6 +9,7 @@ import warnings
 from packaging.version import Version as PkgVersion
 
 import torch
+import torch.distributed as dist
 from transformer_engine.pytorch.utils import (
     get_device_compute_capability,
 )
@@ -32,6 +33,11 @@ from transformer_engine.pytorch.attention.inference import InferenceParams
 import transformer_engine.pytorch.attention.dot_product_attention.utils as dpa_utils
 
 from transformer_engine.plugin.core.ops import FlashAttentionBase
+from transformer_engine.plugin.core.backends.fa_utils import (
+    all_gather_along_seq,
+    create_cp_causal_mask,
+    get_cp_info,
+)
 
 import flag_gems
 
@@ -58,6 +64,8 @@ class AttnFuncFL(torch.autograd.Function):
         rng_gen,
         deterministic,
         layer_number,
+        use_cp=False,
+        cp_attn_mask=None,
     ):
         nvtx_label = "transformer_engine.AttnFuncFL.forward"
         nvtx_range_push(f"{nvtx_label}")
@@ -70,8 +78,13 @@ class AttnFuncFL(torch.autograd.Function):
 
         max_logit = None
 
-        is_causal = attn_mask_type == 'causal'
-
+        # For CP with causal attention, use explicit mask instead of is_causal flag
+        if use_cp and cp_attn_mask is not None:
+            is_causal = False
+            attn_mask = cp_attn_mask
+        else:
+            is_causal = attn_mask_type == 'causal'
+            attn_mask = None
 
         q_permuted = q.permute(1, 2, 0, 3).contiguous()
         k_permuted = k.permute(1, 2, 0, 3).contiguous()
@@ -81,7 +94,7 @@ class AttnFuncFL(torch.autograd.Function):
             q_permuted,
             k_permuted,
             v_permuted,
-            attn_mask=None,
+            attn_mask=attn_mask,
             dropout_p=dropout_p,
             is_causal=is_causal,
             scale=attn_scale,
@@ -130,6 +143,8 @@ class AttnFuncFL(torch.autograd.Function):
         ctx.attn_mask_type = attn_mask_type
         ctx.window_size = window_size
         ctx.deterministic = deterministic
+        ctx.use_cp = use_cp
+        ctx.cp_attn_mask = cp_attn_mask
 
         return out_ret
 
@@ -170,6 +185,9 @@ class AttnFuncFL(torch.autograd.Function):
             # d_out is (seq, batch, heads, dim) from autograd, permute to (batch, heads, seq, dim)
             d_out_permuted = d_out.permute(1, 2, 0, 3).contiguous()
 
+            # Use cp_attn_mask for backward if CP is enabled
+            bwd_attn_mask = ctx.cp_attn_mask if ctx.use_cp else None
+
             dq_permuted, dk_permuted, dv_permuted = flag_gems.scaled_dot_product_attention_backward(
                 d_out_permuted,
                 q_permuted,
@@ -177,7 +195,7 @@ class AttnFuncFL(torch.autograd.Function):
                 v_permuted,
                 out_permuted,
                 m,
-                attn_mask=None,
+                attn_mask=bwd_attn_mask,
                 dropout_p=ctx.dropout_p,
                 is_causal=ctx.is_causal,
                 scale=ctx.attn_scale,
@@ -191,24 +209,26 @@ class AttnFuncFL(torch.autograd.Function):
             rest = None
 
         return (
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            dq,
-            dk,
-            dv,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
+            None,  # is_training
+            None,  # max_seqlen_q
+            None,  # max_seqlen_kv
+            None,  # cu_seqlens_q
+            None,  # cu_seqlens_kv
+            None,  # page_table_k
+            None,  # page_table_v
+            dq,    # q
+            dk,    # k
+            dv,    # v
+            None,  # attn_scale
+            None,  # dropout_p
+            None,  # qkv_layout
+            None,  # attn_mask_type
+            None,  # window_size
+            None,  # rng_gen
+            None,  # deterministic
+            None,  # layer_number
+            None,  # use_cp
+            None,  # cp_attn_mask
         )
 
 
@@ -289,14 +309,16 @@ class FlashAttentionFL(FlashAttentionBase):
             qkv_layout in QKVLayouts
         ), f"FLAttention does not support qkv_layout = {qkv_layout}!"
 
-        cp_size = 1
-        if isinstance(cp_group, dist_group_type):
-            cp_size = get_distributed_world_size(cp_group)
-        elif isinstance(cp_group, list):
+        # Get CP info using shared utility
+        if isinstance(cp_group, list):
+            # Handle hierarchical CP groups
+            cp_size = 1
             for group in cp_group:
                 cp_size *= get_distributed_world_size(group)
-        context_parallel = cp_size > 1
-        assert not context_parallel, "FLAttention do not support context parallel now"
+            cp_rank = 0  # Need proper handling for hierarchical groups
+            use_cp = cp_size > 1
+        else:
+            cp_size, cp_rank, use_cp = get_cp_info(cp_group)
 
         qkv_format, q_format, kv_format = dpa_utils.get_qkv_format(qkv_layout, inference_params)
 
@@ -322,7 +344,7 @@ class FlashAttentionFL(FlashAttentionBase):
                 max_seqlen_kv *= cp_size
                 if "padding" in attn_mask_type:
                     assert (
-                        not context_parallel
+                        not use_cp
                     ), "Padding mask not supported with context parallelism!"
                     if cu_seqlens_q is None or cu_seqlens_kv is None:
                         if attention_mask is None:
@@ -358,6 +380,43 @@ class FlashAttentionFL(FlashAttentionBase):
         elif inference_params.is_paged:
             page_table = inference_params.cache_manager.page_table
 
+        # Context Parallelism support: all-gather key/value and create causal mask
+        cp_attn_mask = None
+        local_seq_len_q = query_layer.shape[0] if qkv_format == "sbhd" else query_layer.shape[1]
+
+        if use_cp:
+            # Convert to BHSD format for all-gather (seq_dim=2)
+            if qkv_format == "sbhd":
+                # sbhd -> bhsd: [seq, batch, heads, dim] -> [batch, heads, seq, dim]
+                key_bhsd = key_layer.permute(1, 2, 0, 3).contiguous()
+                value_bhsd = value_layer.permute(1, 2, 0, 3).contiguous()
+            else:  # bshd
+                # bshd -> bhsd: [batch, seq, heads, dim] -> [batch, heads, seq, dim]
+                key_bhsd = key_layer.permute(0, 2, 1, 3).contiguous()
+                value_bhsd = value_layer.permute(0, 2, 1, 3).contiguous()
+
+            # All-gather key/value along sequence dimension
+            key_bhsd = all_gather_along_seq(key_bhsd, cp_group, seq_dim=2)
+            value_bhsd = all_gather_along_seq(value_bhsd, cp_group, seq_dim=2)
+
+            # Convert back to original format
+            if qkv_format == "sbhd":
+                # bhsd -> sbhd
+                key_layer = key_bhsd.permute(2, 0, 1, 3).contiguous()
+                value_layer = value_bhsd.permute(2, 0, 1, 3).contiguous()
+            else:  # bshd
+                # bhsd -> bshd
+                key_layer = key_bhsd.permute(0, 2, 1, 3).contiguous()
+                value_layer = value_bhsd.permute(0, 2, 1, 3).contiguous()
+
+            # Create CP causal mask if causal attention
+            if attn_mask_type == "causal":
+                full_seq_len_kv = key_layer.shape[0] if qkv_format == "sbhd" else key_layer.shape[1]
+                cp_attn_mask = create_cp_causal_mask(
+                    local_seq_len_q, full_seq_len_kv, cp_rank,
+                    query_layer.device, query_layer.dtype
+                )
+
         with self.attention_dropout_ctx():
             _attn_impl = AttnFuncFL
             output = _attn_impl.apply(
@@ -379,6 +438,8 @@ class FlashAttentionFL(FlashAttentionBase):
                 None,
                 self.deterministic,
                 self.layer_number,
+                use_cp,
+                cp_attn_mask,
             )
 
         return output.view(*output.shape[:-2], -1)

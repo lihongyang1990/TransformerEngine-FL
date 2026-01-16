@@ -186,6 +186,8 @@ def register_builtins(registry) -> None:
         OpImpl(op_name="create_comm_overlap_p2p", impl_id="vendor.hygon", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.create_comm_overlap_p2p, is_avail), vendor="HYGON", priority=100),
 
         # FlashAttention class getter
+        OpImpl(op_name="get_flash_attention_class", impl_id="vendor.hygon", kind=BackendImplKind.VENDOR, fn=_bind_is_available(backend.get_flash_attention_class, is_avail), vendor="HYGON", priority=100),
+
     ]
 
     registry.register_many(impls)

@@ -161,7 +161,8 @@ class HygonBackend(TEFLBackendBase):
         return _check_hygon_available()
 
     def get_flash_attention_class(self):
-        raise NotImplementedError("get_flash_attention_class - not implemented in hygon backend")
+        from .flash_attention import FlashAttentionHYGON
+        return FlashAttentionHYGON
 
     def get_attention_backend(self, attention_params=None):
         raise NotImplementedError("get_attention_backend - not implemented in hygon backend")
