@@ -711,7 +711,7 @@ class FusedAdam(torch.optim.Optimizer):
                             self.multi_tensor_adam_param_remainder, tensor_lists
                         )
                     else:
-                        apply_multi_tensor_adam(self.multi_tensor_adam(), tensor_lists)
+                        apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists)
                 if len(p_fp8_model) > 0:
                     tensor_lists = [
                         g_of_fp8_model,
@@ -731,14 +731,14 @@ class FusedAdam(torch.optim.Optimizer):
                         m_of_f32_model,
                         v_of_f32_model,
                     ]
-                    apply_multi_tensor_adam(self.multi_tensor_adam(), tensor_lists)
+                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists)
             else:  # self.master_weights=False and self.capturable=False
                 if len(p_f16_model) > 0:
                     tensor_lists = [g_of_f16_model, p_f16_model, m_of_f16_model, v_of_f16_model]
-                    apply_multi_tensor_adam(self.multi_tensor_adam(), tensor_lists)
+                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists)
                 if len(p_f32_model) > 0:
                     tensor_lists = [g_of_f32_model, p_f32_model, m_of_f32_model, v_of_f32_model]
-                    apply_multi_tensor_adam(self.multi_tensor_adam(), tensor_lists)
+                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists)
 
             # Scaling
             for name in ["exp_avg", "exp_avg_sq", "master_param"]:

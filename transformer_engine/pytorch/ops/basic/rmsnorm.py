@@ -232,7 +232,6 @@ class RMSNorm(BasicOperation):
             w,
             self._sm_margins["backward"],
             self.zero_centered_gamma,
-            self.eps,
         )
 
         # Clear saved tensors if possible

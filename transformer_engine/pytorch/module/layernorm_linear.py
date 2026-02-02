@@ -508,7 +508,6 @@ class _LayerNormLinear(torch.autograd.Function):
                     FP8GlobalStateManager.IS_FIRST_FP8_MODULE = _first_fp8_module
             ctx.wgrad_store = wgrad_store
             ctx.debug = debug
-            ctx.eps = eps
 
         # ------------------------------------------------------
         # Cached state for backward pass is ready...
@@ -972,7 +971,6 @@ class _LayerNormLinear(torch.autograd.Function):
                     ln_weight,
                     ctx.bwd_ln_sm_margin,
                     ctx.zero_centered_gamma,
-                    ctx.eps,
                 )
                 dgrad = dgrad.reshape(inputmat.size())
                 dbeta = None
