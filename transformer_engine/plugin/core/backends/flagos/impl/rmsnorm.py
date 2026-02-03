@@ -42,7 +42,7 @@ def rmsnorm_bwd_fl(
     gamma,
     sm_margin,
     zero_centered_gamma,
-    eps,
+    eps=1e-5,
 ):
     # When zero_centered_gamma is True, forward uses (1 + gamma) as weight
     # So backward needs to use (1 + gamma) for computing dx

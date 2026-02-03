@@ -5,10 +5,8 @@
 import os
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple, Union
-
 import torch
-
-from transformer_engine.plugin.core.ops import TEFLBackendBase, FP8TensorMeta, NVTE_Fused_Attn_Backend
+from ....ops import *
 
 _kunlunxin_available = False
 

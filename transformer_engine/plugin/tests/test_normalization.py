@@ -13,6 +13,7 @@ from transformer_engine.plugin.test_utils import (
     TestCase,
     generate_random_tensor,
 )
+from transformer_engine.plugin.core.ops import DType
 
 
 class NormalizationTests(TestCase):
@@ -57,7 +58,7 @@ class NormalizationTests(TestCase):
             try:
                 output, mean, rsigma = backend.layernorm_fwd(
                     x, weight, bias, self.eps,
-                    None, None, torch.float32, 0, False
+                    None, None, DType.kFloat32, 0, False
                 )
                 self.assert_close(
                     output, ref_output, rtol=1e-5, atol=1e-7,
@@ -143,7 +144,7 @@ class NormalizationTests(TestCase):
             try:
                 output, _, rsigma = backend.rmsnorm_fwd(
                     x, weight, self.eps,
-                    None, None, torch.float32, 0, False
+                    None, None, DType.kFloat32, 0, False
                 )
                 self.assert_close(
                     output, ref_output, rtol=1e-5, atol=1e-7,
@@ -185,7 +186,7 @@ class NormalizationTests(TestCase):
 
                 grad_x, grad_weight = backend.rmsnorm_bwd(
                     grad_output, x_copy, rsigma.detach(),
-                    weight_copy, 0, False, self.eps
+                    weight_copy, 0, False
                 )
 
                 self.assert_close(

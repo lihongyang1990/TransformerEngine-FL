@@ -201,7 +201,7 @@ class OptimizerTests(TestCase):
                     lr=lr,
                     beta1=beta1,
                     beta2=beta2,
-                    eps=eps,
+                    epsilon=eps,
                     step=step,
                     mode=1,  # AdamW mode
                     bias_correction=1,
@@ -258,7 +258,7 @@ class OptimizerTests(TestCase):
                     chunk_size=2048,
                     noop_flag=noop_flag,
                     tensor_lists=[tensors],
-                    scale=inv_scale,
+                    inv_scale=inv_scale,
                     per_tensor=False
                 )
 

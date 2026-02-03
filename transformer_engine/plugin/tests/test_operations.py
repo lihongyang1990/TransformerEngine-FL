@@ -13,6 +13,7 @@ from transformer_engine.plugin.test_utils import (
     TestCase,
     generate_random_tensor,
 )
+from transformer_engine.plugin.core.ops import DType
 
 
 class OperationsTests(TestCase):
@@ -39,7 +40,7 @@ class OperationsTests(TestCase):
 
                 output, _, _, _ = backend.generic_gemm(
                     A, False, B, False, D,
-                    None, torch.float32, None, None,
+                    None, DType.kFloat32, None, DType.kFloat32,
                     False, None, False,
                     workspace, 1024, False, False
                 )
@@ -71,7 +72,7 @@ class OperationsTests(TestCase):
 
                 output, _, _, _ = backend.generic_gemm(
                     A, True, B, False, D,
-                    None, torch.float32, None, None,
+                    None, DType.kFloat32, None, DType.kFloat32,
                     False, None, False,
                     workspace, 1024, False, False
                 )
@@ -103,7 +104,7 @@ class OperationsTests(TestCase):
 
                 output, _, _, _ = backend.generic_gemm(
                     B_mat, False, A, False, D,
-                    None, torch.float32, None, None,
+                    None, DType.kFloat32, None, DType.kFloat32,
                     False, None, False,
                     workspace, 1024, False, False
                 )
@@ -181,7 +182,7 @@ class OperationsTests(TestCase):
         for backend_name in self.backends:
             backend = get_backend(backend_name)
             try:
-                output, mask = backend.dropout_fwd(x, dropout_prob)
+                output, mask = backend.dropout_fwd(x, dropout_prob, None)
 
                 num_nonzero = (output != 0).sum().item()
                 total_elements = output.numel()
@@ -206,7 +207,7 @@ class OperationsTests(TestCase):
                     )
 
                 grad_output = generate_random_tensor(shape, dtype=torch.bfloat16, device=self.device)
-                grad_input = backend.dropout_bwd(grad_output, mask, dropout_prob)
+                grad_input = backend.dropout_bwd(grad_output, mask, dropout_prob, None)
 
                 grad_nonzero_mask = (grad_input != 0)
                 output_nonzero_mask = (output != 0)

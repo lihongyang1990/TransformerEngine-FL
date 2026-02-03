@@ -43,7 +43,6 @@ def rmsnorm_bwd_torch(
     gamma,
     sm_margin,
     zero_centered_gamma,
-    eps,
 ):
     inv_rms = rsigma.unsqueeze(-1)
 

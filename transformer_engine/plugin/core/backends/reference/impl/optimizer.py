@@ -2,7 +2,7 @@
 #
 # See LICENSE for license information.
 
-from typing import List, Union
+from typing import List, Tuple, Union
 import torch
 
 __all__ = [
@@ -41,26 +41,40 @@ def multi_tensor_l2norm_torch(
     noop_flag: torch.Tensor,
     tensor_lists: List[List[torch.Tensor]],
     per_tensor: bool = False,
-) -> Union[torch.Tensor, List[torch.Tensor]]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Compute L2 norm of tensors.
+
+    Returns:
+        Tuple of (total_norm, per_tensor_norms_or_dummy)
+        - total_norm: The combined L2 norm of all tensors
+        - per_tensor_norms_or_dummy: Per-tensor norms stacked if per_tensor=True, else dummy tensor
+    """
+    device = tensor_lists[0][0].device if tensor_lists and tensor_lists[0] else 'cpu'
+
     if noop_flag.item() != 0:
-        if per_tensor:
-            return [torch.tensor(0.0, device=t.device) for t in tensor_lists[0]]
-        else:
-            return torch.tensor(0.0, device=tensor_lists[0][0].device)
+        return torch.tensor(0.0, device=device), torch.tensor(0.0, device=device)
 
     tensors = tensor_lists[0]
 
+    # Compute per-tensor norms
+    per_tensor_norms = []
+    total_norm_sq = torch.tensor(0.0, device=device)
+
+    for tensor in tensors:
+        norm_sq = torch.sum(tensor.float() ** 2)
+        total_norm_sq += norm_sq
+        if per_tensor:
+            per_tensor_norms.append(torch.sqrt(norm_sq))
+
+    total_norm = torch.sqrt(total_norm_sq)
+
     if per_tensor:
-        norms = []
-        for tensor in tensors:
-            norm = torch.norm(tensor.float(), p=2)
-            norms.append(norm)
-        return norms
+        per_tensor_result = torch.stack(per_tensor_norms)
     else:
-        total_norm_sq = torch.tensor(0.0, device=tensors[0].device)
-        for tensor in tensors:
-            total_norm_sq += torch.sum(tensor.float() ** 2)
-        return torch.sqrt(total_norm_sq)
+        per_tensor_result = torch.tensor(0.0, device=device)
+
+    return total_norm, per_tensor_result
 
 
 def multi_tensor_adam_torch(
@@ -225,12 +239,31 @@ def multi_tensor_sgd_torch(
     chunk_size: int,
     noop_flag: torch.Tensor,
     tensor_lists: List[List[torch.Tensor]],
-    lr: float,
+    wd: float,
     momentum: float,
     dampening: float,
-    weight_decay: float,
+    lr: float,
     nesterov: bool,
+    first_run: bool,
+    wd_after_momentum: bool,
+    scale: float,
 ) -> None:
+    """
+    SGD optimizer with momentum.
+
+    Args:
+        chunk_size: Chunk size (unused in PyTorch implementation)
+        noop_flag: If non-zero, skip computation
+        tensor_lists: [params, grads, momentum_buffers]
+        wd: Weight decay coefficient
+        momentum: Momentum factor
+        dampening: Dampening for momentum
+        lr: Learning rate
+        nesterov: Whether to use Nesterov momentum
+        first_run: Whether this is the first run (initialize momentum buffer)
+        wd_after_momentum: Whether to apply weight decay after momentum
+        scale: Scale factor for gradients
+    """
     if noop_flag.item() != 0:
         return
 
@@ -246,12 +279,17 @@ def multi_tensor_sgd_torch(
         if grad is None:
             continue
 
-        if weight_decay != 0:
-            grad = grad.add(param, alpha=weight_decay)
+        # Apply scale to gradient
+        if scale != 1.0:
+            grad = grad * scale
+
+        # Apply weight decay before momentum (L2 regularization style)
+        if wd != 0 and not wd_after_momentum:
+            grad = grad.add(param, alpha=wd)
 
         if momentum != 0:
-            if buf is None or buf.numel() == 0:
-                buf = grad.clone().detach()
+            if first_run or buf is None or buf.numel() == 0:
+                buf.copy_(grad)
             else:
                 buf.mul_(momentum).add_(grad, alpha=1 - dampening)
 
@@ -259,6 +297,10 @@ def multi_tensor_sgd_torch(
                 grad = grad.add(buf, alpha=momentum)
             else:
                 grad = buf
+
+        # Apply weight decay after momentum (decoupled style)
+        if wd != 0 and wd_after_momentum:
+            param.add_(param, alpha=-lr * wd)
 
         param.add_(grad, alpha=-lr)
 

@@ -5,12 +5,37 @@
 from typing import Any, Optional, Tuple
 import torch
 import torch.nn.functional as F
+from ....ops import DType
 
 __all__ = [
     "layernorm_fwd_torch",
     "layernorm_bwd_torch",
 ]
 
+# Mapping from DType enum to torch.dtype
+_DTYPE_TO_TORCH_DTYPE = {
+    DType.kByte: torch.uint8,
+    DType.kInt16: torch.int16,
+    DType.kInt32: torch.int32,
+    DType.kInt64: torch.int64,
+    DType.kFloat32: torch.float32,
+    DType.kFloat16: torch.float16,
+    DType.kBFloat16: torch.bfloat16,
+    DType.kFloat8E4M3: torch.float8_e4m3fn,
+    DType.kFloat8E5M2: torch.float8_e5m2,
+}
+
+def _to_torch_dtype(dtype):
+    """Convert DType enum to torch.dtype."""
+    if dtype is None:
+        return None
+    if isinstance(dtype, torch.dtype):
+        return dtype
+    if isinstance(dtype, (int, DType)):
+        dtype_enum = DType(dtype)
+        if dtype_enum in _DTYPE_TO_TORCH_DTYPE:
+            return _DTYPE_TO_TORCH_DTYPE[dtype_enum]
+    raise ValueError(f"Unsupported dtype: {dtype}")
 
 def layernorm_fwd_torch(
     input: torch.Tensor,
@@ -19,10 +44,11 @@ def layernorm_fwd_torch(
     eps: float,
     ln_out: Optional[torch.Tensor],
     quantizer: Any,
-    odtype: torch.dtype,
+    odtype: DType,
     sm_margin: int,
     zero_centered_gamma: bool,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    odtype = _to_torch_dtype(odtype)
     mean = input.mean(dim=-1, keepdim=True)
     var = input.var(dim=-1, keepdim=True, unbiased=False)
     rsigma = torch.rsqrt(var + eps)
@@ -44,7 +70,6 @@ def layernorm_fwd_torch(
     rsigma = rsigma.squeeze(-1)
 
     return output, mean, rsigma
-
 
 def layernorm_bwd_torch(
     dy: torch.Tensor,

@@ -43,20 +43,11 @@ def register_builtins(registry) -> None:
         # Normalization
         OpImpl(op_name="rmsnorm_fwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.rmsnorm_fwd, is_avail), vendor=None, priority=50),
         OpImpl(op_name="rmsnorm_bwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.rmsnorm_bwd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="rmsnorm_bwd_add", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.rmsnorm_bwd_add, is_avail), vendor=None, priority=50),
         OpImpl(op_name="layernorm_fwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.layernorm_fwd, is_avail), vendor=None, priority=50),
         OpImpl(op_name="layernorm_bwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.layernorm_bwd, is_avail), vendor=None, priority=50),
 
         # GEMM
         OpImpl(op_name="generic_gemm", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.generic_gemm, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="te_general_grouped_gemm", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.te_general_grouped_gemm, is_avail), vendor=None, priority=50),
-
-        # Quantization
-        OpImpl(op_name="quantize", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.quantize, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="dequantize", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.dequantize, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="bgrad_quantize", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.bgrad_quantize, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="multi_tensor_quantize", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.multi_tensor_quantize, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="split_quantize", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.split_quantize, is_avail), vendor=None, priority=50),
 
         # Activations - Forward
         OpImpl(op_name="gelu", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.gelu, is_avail), vendor=None, priority=50),
@@ -101,75 +92,17 @@ def register_builtins(registry) -> None:
         OpImpl(op_name="scaled_aligned_causal_masked_softmax_forward", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.scaled_aligned_causal_masked_softmax_forward, is_avail), vendor=None, priority=50),
         OpImpl(op_name="scaled_aligned_causal_masked_softmax_backward", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.scaled_aligned_causal_masked_softmax_backward, is_avail), vendor=None, priority=50),
 
-        # MOE operations
-        OpImpl(op_name="moe_permute_fwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.moe_permute_fwd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="moe_permute_bwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.moe_permute_bwd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="moe_unpermute_fwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.moe_unpermute_fwd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="moe_unpermute_bwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.moe_unpermute_bwd, is_avail), vendor=None, priority=50),
-
-        # Fused attention
+        # Fused attention backend getter
         OpImpl(op_name="get_fused_attn_backend", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.get_fused_attn_backend, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fused_attn_fwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_attn_fwd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fused_attn_bwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_attn_bwd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fa_prepare_fwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fa_prepare_fwd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fa_prepare_bwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fa_prepare_bwd, is_avail), vendor=None, priority=50),
-
-        # KV cache
-        OpImpl(op_name="copy_to_kv_cache", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.copy_to_kv_cache, is_avail), vendor=None, priority=50),
-
-        # Tensor format conversions
-        OpImpl(op_name="convert_thd_to_bshd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.convert_thd_to_bshd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="convert_bshd_to_thd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.convert_bshd_to_thd, is_avail), vendor=None, priority=50),
-
-        # RoPE (Rotary Position Embedding)
-        OpImpl(op_name="fused_rope_forward", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_rope_forward, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fused_rope_backward", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_rope_backward, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fused_qkv_rope_forward", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_qkv_rope_forward, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fused_qkv_rope_backward", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_qkv_rope_backward, is_avail), vendor=None, priority=50),
-
-        # TopK and MOE aux loss
-        OpImpl(op_name="fused_topk_with_score_function_fwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_topk_with_score_function_fwd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fused_topk_with_score_function_bwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_topk_with_score_function_bwd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fused_score_for_moe_aux_loss_fwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_score_for_moe_aux_loss_fwd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fused_score_for_moe_aux_loss_bwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_score_for_moe_aux_loss_bwd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fused_moe_aux_loss_fwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_moe_aux_loss_fwd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fused_moe_aux_loss_bwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_moe_aux_loss_bwd, is_avail), vendor=None, priority=50),
 
         # Dropout
         OpImpl(op_name="dropout_fwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.dropout_fwd, is_avail), vendor=None, priority=50),
         OpImpl(op_name="dropout_bwd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.dropout_bwd, is_avail), vendor=None, priority=50),
 
-        # FP8 operations
-        OpImpl(op_name="fp8_transpose", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fp8_transpose, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="swap_first_dims", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.swap_first_dims, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="compute_amax", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.compute_amax, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fused_amax_and_scale_update_after_reduction", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_amax_and_scale_update_after_reduction, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fp8_block_scaling_compute_partial_amax", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fp8_block_scaling_compute_partial_amax, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fp8_block_scaling_partial_cast", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fp8_block_scaling_partial_cast, is_avail), vendor=None, priority=50),
-
-        # Padding operations
-        OpImpl(op_name="fused_multi_row_padding", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_multi_row_padding, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="fused_multi_row_unpadding", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.fused_multi_row_unpadding, is_avail), vendor=None, priority=50),
-
         # Library version getters
         OpImpl(op_name="get_cublasLt_version", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.get_cublasLt_version, is_avail), vendor=None, priority=50),
         OpImpl(op_name="get_cudnn_version", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.get_cudnn_version, is_avail), vendor=None, priority=50),
         OpImpl(op_name="get_num_cublas_streams", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.get_num_cublas_streams, is_avail), vendor=None, priority=50),
-
-        # THD (Tensor, Hidden, Dimension) operations
-        OpImpl(op_name="thd_read_half_tensor", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.thd_read_half_tensor, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="thd_second_half_lse_correction", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.thd_second_half_lse_correction, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="thd_read_second_half_lse", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.thd_read_second_half_lse, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="thd_out_correction", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.thd_out_correction, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="thd_grad_correction", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.thd_grad_correction, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="thd_get_partitioned_indices", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.thd_get_partitioned_indices, is_avail), vendor=None, priority=50),
-
-        # NVSHMEM operations
-        OpImpl(op_name="init_nvshmem_backend", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.init_nvshmem_backend, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="create_nvshmem_tensor", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.create_nvshmem_tensor, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="nvshmem_send_on_current_stream", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.nvshmem_send_on_current_stream, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="nvshmem_wait_on_current_stream", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.nvshmem_wait_on_current_stream, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="nvshmem_finalize", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.nvshmem_finalize, is_avail), vendor=None, priority=50),
 
         # Multi-tensor optimizer operations
         OpImpl(op_name="multi_tensor_scale", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.multi_tensor_scale, is_avail), vendor=None, priority=50),
@@ -177,18 +110,7 @@ def register_builtins(registry) -> None:
         OpImpl(op_name="multi_tensor_unscale_l2norm", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.multi_tensor_unscale_l2norm, is_avail), vendor=None, priority=50),
         OpImpl(op_name="multi_tensor_adam", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.multi_tensor_adam, is_avail), vendor=None, priority=50),
         OpImpl(op_name="multi_tensor_adam_param_remainder", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.multi_tensor_adam_param_remainder, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="multi_tensor_adam_fp8", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.multi_tensor_adam_fp8, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="multi_tensor_adam_capturable", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.multi_tensor_adam_capturable, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="multi_tensor_adam_capturable_master", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.multi_tensor_adam_capturable_master, is_avail), vendor=None, priority=50),
         OpImpl(op_name="multi_tensor_sgd", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.multi_tensor_sgd, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="multi_tensor_compute_scale_and_scale_inv", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.multi_tensor_compute_scale_and_scale_inv, is_avail), vendor=None, priority=50),
-
-        # Communication overlap operations
-        OpImpl(op_name="bulk_overlap_ag_with_external_gemm", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.bulk_overlap_ag_with_external_gemm, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="create_fp8_tensor_meta", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.create_fp8_tensor_meta, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="create_comm_overlap_helper", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.create_comm_overlap_helper, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="create_comm_overlap", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.create_comm_overlap, is_avail), vendor=None, priority=50),
-        OpImpl(op_name="create_comm_overlap_p2p", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.create_comm_overlap_p2p, is_avail), vendor=None, priority=50),
 
         # FlashAttention class getter
         OpImpl(op_name="get_flash_attention_class", impl_id="reference.torch", kind=BackendImplKind.REFERENCE, fn=_bind_is_available(backend.get_flash_attention_class, is_avail), vendor=None, priority=50),
