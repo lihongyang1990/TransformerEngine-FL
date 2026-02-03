@@ -34,6 +34,9 @@ def multi_tensor_l2_norm_fl(
 
     for tensor in tensors:
         norm_sq = flag_gems.sum(tensor.float() ** 2)
+        # Check for inf/nan (matches CUDA behavior)
+        if not torch.isfinite(norm_sq):
+            noop_flag.fill_(1)
         total_norm_sq = total_norm_sq + norm_sq
         if per_tensor:
             per_tensor_norms.append(flag_gems.sqrt(norm_sq))
@@ -47,7 +50,6 @@ def multi_tensor_l2_norm_fl(
 
     return total_norm, per_tensor_result
 
-
 def multi_tensor_scale_fl(
     _chunk_size: int,
     noop_flag: torch.Tensor,
@@ -58,4 +60,7 @@ def multi_tensor_scale_fl(
         return
 
     for src, dst in zip(tensor_lists[0], tensor_lists[1]):
+        # Check for inf/nan (matches CUDA behavior for AMP gradient scaling)
+        if not torch.isfinite(src).all():
+            noop_flag.fill_(1)
         flag_gems.copy_(dst, src * scale)
