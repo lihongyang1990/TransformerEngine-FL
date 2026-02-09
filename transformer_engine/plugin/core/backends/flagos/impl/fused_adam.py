@@ -212,5 +212,5 @@ def multi_tensor_adam_param_remainder_fl(
         new_p = torch.where(new_p_rem < 0, new_p + 1, new_p)
 
         # Write back
-        p.view(torch.int16).copy_(new_p)
-        p_remainder.copy_(new_p_rem)
+        flag_gems.copy_(p, new_p.view(torch.bfloat16))
+        flag_gems.copy_(p_remainder, new_p_rem)
