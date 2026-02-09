@@ -159,12 +159,9 @@ class FlagOSBackend(TEFLBackendBase):
         bias_correction: int,
         weight_decay: float,
     ) -> None:
-        if chunk_size is None:
-            return multi_tensor_adam_fl
         return multi_tensor_adam_fl(
-            chunk_size=chunk_size, noop_flag=noop_flag, tensor_lists=tensor_lists,
-            lr=lr, beta1=beta1, beta2=beta2, epsilon=epsilon,
-            step=step, mode=mode, bias_correction=bias_correction, weight_decay=weight_decay,
+            chunk_size, noop_flag, tensor_lists, lr, beta1, beta2, epsilon,
+            step, mode, bias_correction, weight_decay,
         )
     def multi_tensor_adam_param_remainder(
         self,
@@ -180,12 +177,10 @@ class FlagOSBackend(TEFLBackendBase):
         bias_correction: int,
         weight_decay: float,
     ) -> None:
-        if chunk_size is None:
-            return multi_tensor_adam_param_remainder_fl
         return multi_tensor_adam_param_remainder_fl(
-            chunk_size=chunk_size, noop_flag=noop_flag, tensor_lists=tensor_lists,
-            lr=lr, beta1=beta1, beta2=beta2, epsilon=epsilon,
-            step=step, mode=mode, bias_correction=bias_correction, weight_decay=weight_decay,
+            chunk_size, noop_flag, tensor_lists,
+            lr, beta1, beta2, epsilon,
+            step, mode, bias_correction, weight_decay,
         )
 
     # Misc
