@@ -75,19 +75,19 @@ class ReferenceBackend(TEFLBackendBase):
     def generic_gemm(
         self,
         A: Any,
-        transa: bool,
+        transA: bool,
         B: Any,
-        transb: bool,
+        transB: bool,
         D: Any,
         quantizer: Any,
-        out_dtype: Optional[DType],
+        output_dtype: Optional[DType],
         bias: Optional[torch.Tensor],
         bias_type: DType,
         gelu: bool,
         gelu_in: Optional[torch.Tensor],
         grad: bool,
         workspace: torch.Tensor,
-        workspaceSize: int,
+        workspace_size: int,
         accumulate: bool,
         use_split_accumulator: bool,
         comm_overlap: Optional[Any] = None,
@@ -98,28 +98,10 @@ class ReferenceBackend(TEFLBackendBase):
         beta: Optional[float] = None,
     ) -> List[Any]:
         return general_gemm_torch(
-            A=A,
-            transA=transa,
-            B=B,
-            transB=transb,
-            D=D,
-            quantizer=quantizer,
-            output_dtype=out_dtype,
-            bias=bias,
-            bias_type=bias_type,
-            gelu=gelu,
-            gelu_in=gelu_in,
-            grad=grad,
-            workspace=workspace,
-            workspace_size=workspaceSize,
-            accumulate=accumulate,
-            use_split_accumulator=use_split_accumulator,
-            comm_overlap=comm_overlap,
-            comm_type=comm_type,
-            extra_output=extra_output,
-            bulk_overlap=bulk_overlap,
-            alpha=alpha,
-            beta=beta,
+            A, transA, B, transB, D, quantizer, output_dtype,
+            bias, bias_type, gelu, gelu_in, grad, workspace, workspace_size,
+            accumulate, use_split_accumulator, comm_overlap, comm_type,
+            extra_output, bulk_overlap, alpha, beta
         )
 
     # GELU and variants
@@ -213,7 +195,7 @@ class ReferenceBackend(TEFLBackendBase):
         grad: torch.Tensor,
         fwd_input: torch.Tensor,
         quantizer: Any,
-    ) -> Tuple[torch.Tensor, Any]:
+    ) -> List[Any]:
         return dbias_dgelu_torch(grad, fwd_input, quantizer)
 
     def dbias_dsilu(
@@ -221,7 +203,7 @@ class ReferenceBackend(TEFLBackendBase):
         grad: torch.Tensor,
         fwd_input: torch.Tensor,
         quantizer: Any,
-    ) -> Tuple[torch.Tensor, Any]:
+    ) -> List[Any]:
         return dbias_dsilu_torch(grad, fwd_input, quantizer)
 
     def dbias_drelu(
@@ -237,7 +219,7 @@ class ReferenceBackend(TEFLBackendBase):
         grad: torch.Tensor,
         fwd_input: torch.Tensor,
         quantizer: Any,
-    ) -> Tuple[torch.Tensor, Any]:
+    ) -> List[Any]:
         return dbias_dqgelu_torch(grad, fwd_input, quantizer)
 
     def dbias_dsrelu(
@@ -245,7 +227,7 @@ class ReferenceBackend(TEFLBackendBase):
         grad: torch.Tensor,
         fwd_input: torch.Tensor,
         quantizer: Any,
-    ) -> Tuple[torch.Tensor, Any]:
+    ) -> List[Any]:
         return dbias_dsrelu_torch(grad, fwd_input, quantizer)
 
     # LayerNorm
@@ -255,12 +237,12 @@ class ReferenceBackend(TEFLBackendBase):
         weight: torch.Tensor,
         bias: Optional[torch.Tensor],
         eps: float,
-        ln_out: Optional[torch.Tensor],
+        ln_out: Any,
         quantizer: Any,
         otype: DType,
         sm_margin: int,
         zero_centered_gamma: bool,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> List[Any]:
         return layernorm_fwd_torch(
             input=input,
             weight=weight,
@@ -280,9 +262,9 @@ class ReferenceBackend(TEFLBackendBase):
         mu: torch.Tensor,
         rsigma: torch.Tensor,
         gamma: torch.Tensor,
-        sm_margin: int = 0,
-        zero_centered_gamma: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
         return layernorm_bwd_torch(
             dy=dz,
             x=x,
@@ -296,15 +278,15 @@ class ReferenceBackend(TEFLBackendBase):
     # RMSNorm
     def rmsnorm_fwd(
         self,
-        input: torch.Tensor,
-        weight: torch.Tensor,
+        input: Any,
+        weight: Any,
         eps: float,
-        ln_out: Optional[torch.Tensor],
+        ln_out: Any,
         quantizer: Any,
         otype: DType,
         sm_margin: int,
         zero_centered_gamma: bool,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
+    ) -> List[Any]:
         return rmsnorm_fwd_torch(
             input=input,
             weight=weight,
@@ -322,9 +304,9 @@ class ReferenceBackend(TEFLBackendBase):
         x: torch.Tensor,
         rsigma: torch.Tensor,
         gamma: torch.Tensor,
-        sm_margin: int = 0,
-        zero_centered_gamma: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
         return rmsnorm_bwd_torch(
             dy=dz,
             x=x,

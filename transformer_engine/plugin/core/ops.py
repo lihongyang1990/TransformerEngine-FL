@@ -382,25 +382,25 @@ class TEFLBackendBase(ABC):
         self,
         input: torch.Tensor,
         quantizer: Any,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> List[Any]:
         raise NotImplementedError
 
     def generic_gemm(
         self,
         A: Any,
-        transa: bool,
+        transA: bool,
         B: Any,
-        transb: bool,
+        transB: bool,
         D: Any,
         quantizer: Any,
-        out_dtype: Optional[DType],
+        output_dtype: Optional[DType],
         bias: Optional[torch.Tensor],
         bias_type: DType,
         gelu: bool,
         gelu_in: Optional[torch.Tensor],
         grad: bool,
         workspace: torch.Tensor,
-        workspaceSize: int,
+        workspace_size: int,
         accumulate: bool,
         use_split_accumulator: bool,
         comm_overlap: Optional[Any] = None,
@@ -571,35 +571,35 @@ class TEFLBackendBase(ABC):
         grad: torch.Tensor,
         fwd_input: torch.Tensor,
         quantizer: Any,
-    ) -> Tuple[torch.Tensor, Any]:
+    ) -> List[Any]:
         raise NotImplementedError
     def dbias_dsilu(
         self,
         grad: torch.Tensor,
         fwd_input: torch.Tensor,
         quantizer: Any,
-    ) -> Tuple[torch.Tensor, Any]:
+    ) -> List[Any]:
         raise NotImplementedError
     def dbias_drelu(
         self,
         grad: torch.Tensor,
         fwd_input: torch.Tensor,
         quantizer: Any,
-    ) -> Tuple[torch.Tensor, Any]:
+    ) -> List[Any]:
         raise NotImplementedError
     def dbias_dqgelu(
         self,
         grad: torch.Tensor,
         fwd_input: torch.Tensor,
         quantizer: Any,
-    ) -> Tuple[torch.Tensor, Any]:
+    ) -> List[Any]:
         raise NotImplementedError
     def dbias_dsrelu(
         self,
         grad: torch.Tensor,
         fwd_input: torch.Tensor,
         quantizer: Any,
-    ) -> Tuple[torch.Tensor, Any]:
+    ) -> List[Any]:
         raise NotImplementedError
     # Permutation functions                                                                                                                                                                                                                                                                                             
     def moe_permute_fwd(
@@ -702,12 +702,12 @@ class TEFLBackendBase(ABC):
         weight: torch.Tensor,
         bias: Optional[torch.Tensor],
         eps: float,
-        ln_out: Optional[torch.Tensor],
+        ln_out: Any,
         quantizer: Any,
         otype: DType,
         sm_margin: int,
         zero_centered_gamma: bool,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> List[Any]:
         raise NotImplementedError
     def layernorm_bwd(
         self,
@@ -716,21 +716,21 @@ class TEFLBackendBase(ABC):
         mu: torch.Tensor,
         rsigma: torch.Tensor,
         gamma: torch.Tensor,
-        sm_margin: int = 0,
-        zero_centered_gamma: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
         raise NotImplementedError
     def rmsnorm_fwd(
         self,
-        input: torch.Tensor,
-        weight: torch.Tensor,
+        input: Any,
+        weight: Any,
         eps: float,
-        ln_out: Optional[torch.Tensor],
+        ln_out: Any,
         quantizer: Any,
         otype: DType,
         sm_margin: int,
         zero_centered_gamma: bool,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
+    ) -> List[Any]:
         raise NotImplementedError
     def rmsnorm_bwd(
         self,
@@ -738,9 +738,9 @@ class TEFLBackendBase(ABC):
         x: torch.Tensor,
         rsigma: torch.Tensor,
         gamma: torch.Tensor,
-        sm_margin: int = 0,
-        zero_centered_gamma: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
         raise NotImplementedError
     def rmsnorm_bwd_add(
         self,
@@ -749,9 +749,9 @@ class TEFLBackendBase(ABC):
         add: torch.Tensor,
         rsigma: torch.Tensor,
         gamma: torch.Tensor,
-        sm_margin: int = 0,
-        zero_centered_gamma: bool = False,
-    ) -> Any:
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
         raise NotImplementedError
 
     def multi_tensor_quantize(
@@ -769,9 +769,9 @@ class TEFLBackendBase(ABC):
         raise NotImplementedError
     def te_general_grouped_gemm(
         self,
-        A: torch.Tensor,
+        A: List[Any],
         transa: bool,
-        B: torch.Tensor,
+        B: List[Any],
         transb: bool,
         D: Optional[List[torch.Tensor]],
         D_type: DType,
@@ -791,8 +791,8 @@ class TEFLBackendBase(ABC):
     def fp8_transpose(
         self,
         input: torch.Tensor,
-        otype: DType,
-        output: Optional[torch.Tensor],
+        dtype: DType,
+        out: Optional[torch.Tensor],
     ) -> torch.Tensor:
         raise NotImplementedError
     def swap_first_dims(

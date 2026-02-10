@@ -131,26 +131,26 @@ class MetaxBackend(TEFLBackendBase):
         self,
         input: torch.Tensor,
         quantizer: Any,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> List[Any]:
         tex = self._get_tex()
         return tex.bgrad_quantize(input, quantizer)
 
     def generic_gemm(
         self,
         A: Any,
-        transa: bool,
+        transA: bool,
         B: Any,
-        transb: bool,
+        transB: bool,
         D: Any,
         quantizer: Any,
-        out_dtype: Optional[DType],
+        output_dtype: Optional[DType],
         bias: Optional[torch.Tensor],
         bias_type: DType,
         gelu: bool,
         gelu_in: Optional[torch.Tensor],
         grad: bool,
         workspace: torch.Tensor,
-        workspaceSize: int,
+        workspace_size: int,
         accumulate: bool,
         use_split_accumulator: bool,
         comm_overlap: Optional[Any] = None,
@@ -164,10 +164,10 @@ class MetaxBackend(TEFLBackendBase):
         
         bias_type = tex.DType(int(bias_type)) if bias_type is not None else None
         comm_type = tex.CommOverlapType(int(comm_type)) if comm_type is not None else None
-        out_dtype = tex.DType(int(out_dtype)) if out_dtype is not None else None
+        output_dtype = tex.DType(int(output_dtype)) if output_dtype is not None else None
         return tex.generic_gemm(
-            A, transa, B, transb, D, quantizer, out_dtype,
-            bias, bias_type, gelu, gelu_in, grad, workspace, workspaceSize,
+            A, transA, B, transB, D, quantizer, output_dtype,
+            bias, bias_type, gelu, gelu_in, grad, workspace, workspace_size,
             accumulate, use_split_accumulator, comm_overlap, comm_type,
             extra_output, bulk_overlap, alpha, beta
         )
@@ -257,19 +257,19 @@ class MetaxBackend(TEFLBackendBase):
         tex = self._get_tex()
         return tex.clamped_dswiglu(grad, fwd_input, quantizer, limit, alpha)
     # DBias + DAct fusions #
-    def dbias_dgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Tuple[torch.Tensor, Any]:
+    def dbias_dgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> List[Any]:
         tex = self._get_tex()
         return tex.dbias_dgelu(grad, fwd_input, quantizer)
-    def dbias_dsilu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Tuple[torch.Tensor, Any]:
+    def dbias_dsilu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> List[Any]:
         tex = self._get_tex()
         return tex.dbias_dsilu(grad, fwd_input, quantizer)
-    def dbias_drelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Tuple[torch.Tensor, Any]:
+    def dbias_drelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> List[Any]:
         tex = self._get_tex()
         return tex.dbias_drelu(grad, fwd_input, quantizer)
-    def dbias_dqgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Tuple[torch.Tensor, Any]:
+    def dbias_dqgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> List[Any]:
         tex = self._get_tex()
         return tex.dbias_dqgelu(grad, fwd_input, quantizer)
-    def dbias_dsrelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Tuple[torch.Tensor, Any]:
+    def dbias_dsrelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> List[Any]:
         tex = self._get_tex()
         return tex.dbias_dsrelu(grad, fwd_input, quantizer)
     # Permutation functions                                                                                                                                                                                                                                                                                             
@@ -393,12 +393,12 @@ class MetaxBackend(TEFLBackendBase):
         weight: torch.Tensor,
         bias: Optional[torch.Tensor],
         eps: float,
-        ln_out: Optional[torch.Tensor],
+        ln_out: Any,
         quantizer: Any,
         otype: DType,
         sm_margin: int,
         zero_centered_gamma: bool,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> List[Any]:
         tex = self._get_tex()
         otype = tex.DType(int(otype)) if otype is not None else None
         return tex.layernorm_fwd(
@@ -411,24 +411,24 @@ class MetaxBackend(TEFLBackendBase):
         mu: torch.Tensor,
         rsigma: torch.Tensor,
         gamma: torch.Tensor,
-        sm_margin: int = 0,
-        zero_centered_gamma: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
         tex = self._get_tex()
         return tex.layernorm_bwd(
             dz, x, mu, rsigma, gamma, sm_margin, zero_centered_gamma
         )
     def rmsnorm_fwd(
         self,
-        input: torch.Tensor,
-        weight: torch.Tensor,
+        input: Any,
+        weight: Any,
         eps: float,
-        ln_out: Optional[torch.Tensor],
+        ln_out: Any,
         quantizer: Any,
         otype: DType,
         sm_margin: int,
         zero_centered_gamma: bool,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
+    ) -> List[Any]:
         tex = self._get_tex()
         otype = tex.DType(int(otype)) if otype is not None else None
         return tex.rmsnorm_fwd(
@@ -440,9 +440,9 @@ class MetaxBackend(TEFLBackendBase):
         x: torch.Tensor,
         rsigma: torch.Tensor,
         gamma: torch.Tensor,
-        sm_margin: int = 0,
-        zero_centered_gamma: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
         tex = self._get_tex()
         return tex.rmsnorm_bwd(dz, x, rsigma, gamma, sm_margin, zero_centered_gamma)
     def rmsnorm_bwd_add(
@@ -452,9 +452,9 @@ class MetaxBackend(TEFLBackendBase):
         add: torch.Tensor,
         rsigma: torch.Tensor,
         gamma: torch.Tensor,
-        sm_margin: int = 0,
-        zero_centered_gamma: bool = False,
-    ) -> Any:
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
         tex = self._get_tex()
         return tex.rmsnorm_bwd_add(dz, x, add, rsigma, gamma, sm_margin, zero_centered_gamma)
 
@@ -475,9 +475,9 @@ class MetaxBackend(TEFLBackendBase):
         return tex.split_quantize(tensor, split_sections, quantizer_list)
     def te_general_grouped_gemm(
         self,
-        A: torch.Tensor,
+        A: List[Any],
         transa: bool,
-        B: torch.Tensor,
+        B: List[Any],
         transb: bool,
         D: Optional[List[torch.Tensor]],
         D_type: DType,
@@ -504,12 +504,12 @@ class MetaxBackend(TEFLBackendBase):
     def fp8_transpose(
         self,
         input: torch.Tensor,
-        otype: DType,
-        output: Optional[torch.Tensor],
+        dtype: DType,
+        out: Optional[torch.Tensor],
     ) -> torch.Tensor:
         tex = self._get_tex()
-        otype = tex.DType(int(otype)) if otype is not None else None
-        return tex.fp8_transpose(input, otype, output)
+        dtype = tex.DType(int(dtype)) if dtype is not None else None
+        return tex.fp8_transpose(input, dtype, out)
     def swap_first_dims(
         self,
         tensor: torch.Tensor,

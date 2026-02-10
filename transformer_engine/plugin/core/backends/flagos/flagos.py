@@ -64,19 +64,19 @@ class FlagOSBackend(TEFLBackendBase):
     def generic_gemm(
         self,
         A: Any,
-        transa: bool,
+        transA: bool,
         B: Any,
-        transb: bool,
+        transB: bool,
         D: Any,
         quantizer: Any,
-        out_dtype: Optional[DType],
+        output_dtype: Optional[DType],
         bias: Optional[torch.Tensor],
         bias_type: DType,
         gelu: bool,
         gelu_in: Optional[torch.Tensor],
         grad: bool,
         workspace: torch.Tensor,
-        workspaceSize: int,
+        workspace_size: int,
         accumulate: bool,
         use_split_accumulator: bool,
         comm_overlap: Optional[Any] = None,
@@ -87,26 +87,24 @@ class FlagOSBackend(TEFLBackendBase):
         beta: Optional[float] = None,
     ) -> List[Any]:
         return generic_gemm_fl(
-            A, transa, B, transb, D, quantizer, out_dtype,
-            bias, bias_type, gelu, gelu_in, grad,
-            workspace, workspaceSize, accumulate, use_split_accumulator,
-            comm_overlap=comm_overlap, comm_type=comm_type,
-            extra_output=extra_output, bulk_overlap=bulk_overlap,
-            alpha=alpha, beta=beta
+            A, transA, B, transB, D, quantizer, output_dtype,
+            bias, bias_type, gelu, gelu_in, grad, workspace, workspace_size,
+            accumulate, use_split_accumulator, comm_overlap, comm_type,
+            extra_output, bulk_overlap, alpha, beta
         )
 
     # Other granular functions
     def rmsnorm_fwd(
         self,
-        input: torch.Tensor,
-        weight: torch.Tensor,
+        input: Any,
+        weight: Any,
         eps: float,
-        ln_out: Optional[torch.Tensor],
+        ln_out: Any,
         quantizer: Any,
         otype: DType,
         sm_margin: int,
         zero_centered_gamma: bool,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
+    ) -> List[Any]:
         return rmsnorm_fwd_fl(
             input=input, weight=weight, eps=eps, ln_out=ln_out,
             quantizer=quantizer, odtype=otype,
@@ -118,9 +116,9 @@ class FlagOSBackend(TEFLBackendBase):
         x: torch.Tensor,
         rsigma: torch.Tensor,
         gamma: torch.Tensor,
-        sm_margin: int = 0,
-        zero_centered_gamma: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
         return rmsnorm_bwd_fl(
             dy=dz, x=x, rsigma=rsigma, gamma=gamma,
             sm_margin=sm_margin, zero_centered_gamma=zero_centered_gamma
