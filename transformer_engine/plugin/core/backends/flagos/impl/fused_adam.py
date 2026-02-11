@@ -7,8 +7,6 @@ import torch
 import flag_gems
 
 
-
-
 def multi_tensor_adam_fl(
     chunk_size: int,
     noop_flag: torch.Tensor,
