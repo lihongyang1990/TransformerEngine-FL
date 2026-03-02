@@ -14,6 +14,7 @@ __all__ = [
     "multi_tensor_compute_scale_and_scale_inv_torch",
 ]
 
+
 def multi_tensor_scale_torch(
     chunk_size: int,
     noop_flag: torch.Tensor,
@@ -37,6 +38,7 @@ def multi_tensor_scale_torch(
             noop_flag.fill_(1)
         out_tensor.copy_(in_tensor * scale)
 
+
 def multi_tensor_l2norm_torch(
     chunk_size: int,
     noop_flag: torch.Tensor,
@@ -51,7 +53,7 @@ def multi_tensor_l2norm_torch(
         - total_norm: The combined L2 norm of all tensors
         - per_tensor_norms_or_dummy: Per-tensor norms stacked if per_tensor=True, else dummy tensor
     """
-    device = tensor_lists[0][0].device if tensor_lists and tensor_lists[0] else 'cpu'
+    device = tensor_lists[0][0].device if tensor_lists and tensor_lists[0] else "cpu"
 
     if noop_flag.item() != 0:
         return torch.tensor(0.0, device=device), torch.tensor(0.0, device=device)
@@ -79,6 +81,7 @@ def multi_tensor_l2norm_torch(
         per_tensor_result = torch.tensor(0.0, device=device)
 
     return total_norm, per_tensor_result
+
 
 def multi_tensor_adam_torch(
     chunk_size: int,
@@ -111,8 +114,8 @@ def multi_tensor_adam_torch(
         raise ValueError("All tensor lists must have the same length")
 
     if bias_correction:
-        bias_correction1 = 1 - beta1 ** step
-        bias_correction2 = 1 - beta2 ** step
+        bias_correction1 = 1 - beta1**step
+        bias_correction2 = 1 - beta2**step
     else:
         bias_correction1 = 1.0
         bias_correction2 = 1.0
@@ -158,6 +161,7 @@ def multi_tensor_adam_torch(
 
             # Update parameter
             param.add_(update, alpha=-lr)
+
 
 def multi_tensor_adam_param_remainder_torch(
     chunk_size: int,
@@ -214,17 +218,19 @@ def multi_tensor_adam_param_remainder_torch(
 
     grads, params, exp_avgs, exp_avg_sqs, param_remainders = tensor_lists
 
-    if not (len(params) == len(grads) == len(exp_avgs) == len(exp_avg_sqs) == len(param_remainders)):
+    if not (
+        len(params) == len(grads) == len(exp_avgs) == len(exp_avg_sqs) == len(param_remainders)
+    ):
         raise ValueError("All tensor lists must have the same length")
 
     if bias_correction:
-        bias_correction1 = 1 - beta1 ** step
-        bias_correction2 = 1 - beta2 ** step
+        bias_correction1 = 1 - beta1**step
+        bias_correction2 = 1 - beta2**step
     else:
         bias_correction1 = 1.0
         bias_correction2 = 1.0
 
-    is_adamw = (mode == 1)
+    is_adamw = mode == 1
 
     for grad, param, exp_avg, exp_avg_sq, param_remainder in zip(
         grads, params, exp_avgs, exp_avg_sqs, param_remainders
@@ -295,6 +301,7 @@ def multi_tensor_adam_param_remainder_torch(
         param.view(torch.int16).copy_(new_p)
         param_remainder.copy_(new_p_rem)
 
+
 def multi_tensor_sgd_torch(
     chunk_size: int,
     noop_flag: torch.Tensor,
@@ -335,6 +342,7 @@ def multi_tensor_sgd_torch(
                 grad = buf
 
         param.add_(grad, alpha=-lr)
+
 
 def multi_tensor_compute_scale_and_scale_inv_torch(
     chunk_size: int,

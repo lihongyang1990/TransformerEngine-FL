@@ -33,10 +33,10 @@ def multi_tensor_adam_fl(
     bias_correction1 = 1.0
     bias_correction2 = 1.0
     if bias_correction == 1:
-        bias_correction1 = 1 - beta1 ** step
-        bias_correction2 = 1 - beta2 ** step
+        bias_correction1 = 1 - beta1**step
+        bias_correction2 = 1 - beta2**step
 
-    is_adamw = (mode == 1)
+    is_adamw = mode == 1
 
     for i in range(num_tensors):
         g = tensor_lists[0][i]
@@ -48,8 +48,10 @@ def multi_tensor_adam_fl(
         if not g.is_contiguous():
             g = g.contiguous()
 
-        m = flag_gems.add_(flag_gems.mul_(m, beta1), g, alpha=1-beta1)
-        v = flag_gems.add_(flag_gems.mul_(v, beta2), flag_gems.mul_(flag_gems.mul_(g, g), 1 - beta2))
+        m = flag_gems.add_(flag_gems.mul_(m, beta1), g, alpha=1 - beta1)
+        v = flag_gems.add_(
+            flag_gems.mul_(v, beta2), flag_gems.mul_(flag_gems.mul_(g, g), 1 - beta2)
+        )
 
         m_corr = m.clone()
         v_corr = v.clone()
@@ -68,6 +70,7 @@ def multi_tensor_adam_fl(
 
         if p_master is not None:
             flag_gems.copy_(p_master, p)
+
 
 def multi_tensor_adam_param_remainder_fl(
     chunk_size: int,
@@ -100,10 +103,10 @@ def multi_tensor_adam_param_remainder_fl(
     bias_correction1 = 1.0
     bias_correction2 = 1.0
     if bias_correction == 1:
-        bias_correction1 = 1 - beta1 ** step
-        bias_correction2 = 1 - beta2 ** step
+        bias_correction1 = 1 - beta1**step
+        bias_correction2 = 1 - beta2**step
 
-    is_adamw = (mode == 1)
+    is_adamw = mode == 1
 
     for i in range(num_tensors):
         g = tensor_lists[0][i]

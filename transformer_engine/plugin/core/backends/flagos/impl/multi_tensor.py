@@ -21,7 +21,7 @@ def multi_tensor_l2_norm_fl(
         - total_norm: The combined L2 norm of all tensors
         - per_tensor_norms_or_dummy: Per-tensor norms stacked if per_tensor=True, else dummy tensor
     """
-    device = tensor_lists[0][0].device if tensor_lists and tensor_lists[0] else 'cpu'
+    device = tensor_lists[0][0].device if tensor_lists and tensor_lists[0] else "cpu"
 
     if noop_flag.item() != 0:
         return torch.tensor(0.0, device=device), torch.tensor(0.0, device=device)
@@ -50,6 +50,7 @@ def multi_tensor_l2_norm_fl(
         per_tensor_result = torch.tensor(0.0, device=device)
 
     return total_norm, per_tensor_result
+
 
 def multi_tensor_scale_fl(
     _chunk_size: int,
