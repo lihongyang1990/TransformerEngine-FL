@@ -4,6 +4,8 @@
 
 """Fused optimizers and multi-tensor kernels."""
 from transformer_engine_torch import (
+    multi_tensor_scale,
+    multi_tensor_l2norm,
     multi_tensor_unscale_l2norm,
     multi_tensor_adam,
     multi_tensor_adam_fp8,
