@@ -14,7 +14,6 @@ def _load_cuda_libs():
     import subprocess
     from pathlib import Path
     import importlib.util
-    import sysconfig
     import platform
     import glob as glob_module
 
@@ -154,7 +153,9 @@ class CUDABackend(TEFLBackendBase):
                      fused_attention_backend, use_unfused_attention, available_backends)
         """
         # Import the original get_attention_backend function
-        from transformer_engine.pytorch.attention.dot_product_attention import utils as dpa_utils
+        from transformer_engine.pytorch.attention.dot_product_attention import (
+            utils as dpa_utils,
+        )
 
         return dpa_utils._original_get_attention_backend(attention_params)
 
@@ -536,7 +537,15 @@ class CUDABackend(TEFLBackendBase):
         tex = self._get_tex()
         otype = tex.DType(int(otype)) if otype is not None else None
         return tex.layernorm_fwd(
-            input, weight, bias, eps, ln_out, quantizer, otype, sm_margin, zero_centered_gamma
+            input,
+            weight,
+            bias,
+            eps,
+            ln_out,
+            quantizer,
+            otype,
+            sm_margin,
+            zero_centered_gamma,
         )
 
     def layernorm_bwd(
@@ -746,7 +755,12 @@ class CUDABackend(TEFLBackendBase):
         tex = self._get_tex()
         fp8_dtype = tex.DType(int(fp8_dtype)) if fp8_dtype is not None else None
         return tex.fused_amax_and_scale_update_after_reduction(
-            amax_reduction_buffer, amax_histories, scales, amax_compute_algo, fp8_dtype, margin
+            amax_reduction_buffer,
+            amax_histories,
+            scales,
+            amax_compute_algo,
+            fp8_dtype,
+            margin,
         )
 
     def fp8_block_scaling_compute_partial_amax(
@@ -1028,7 +1042,14 @@ class CUDABackend(TEFLBackendBase):
         tex = self._get_tex()
         qkv_format = tex.NVTE_QKV_Format(int(qkv_format)) if qkv_format is not None else None
         return tex.fused_rope_forward(
-            input, freqs, start_positions, qkv_format, interleaved, cu_seqlens, cp_size, cp_rank
+            input,
+            freqs,
+            start_positions,
+            qkv_format,
+            interleaved,
+            cu_seqlens,
+            cp_size,
+            cp_rank,
         )
 
     def fused_rope_backward(
@@ -1293,7 +1314,13 @@ class CUDABackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.thd_out_correction(
-            out, out_per_step, lse, lse_per_step, cu_seqlens, only_second_half, lse_packed
+            out,
+            out_per_step,
+            lse,
+            lse_per_step,
+            cu_seqlens,
+            only_second_half,
+            lse_packed,
         )
 
     def thd_grad_correction(

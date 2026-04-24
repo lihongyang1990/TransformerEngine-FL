@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   run-plugin-tests:
-    runs-on: [ self-hosted, Linux, X64, nvidia, gpu-8 ]
+    runs-on: [ nv-8g-cicd-te ]
     defaults:
       run:
         shell: bash
@@ -35,7 +35,7 @@ jobs:
         --ulimit stack=67108864 
         --ulimit nofile=65535:65535 
         --user root
-        --pull always
+        --pull never
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6.0.1
