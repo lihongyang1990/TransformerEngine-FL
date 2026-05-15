@@ -447,6 +447,8 @@ class ReferenceBackend(TEFLBackendBase):
         _window_size_left: int,
         _window_size_right: int,
         _return_max_logit: bool,
+        _cuda_graph: bool = False,
+        _deterministic: bool = False,
     ) -> NVTE_Fused_Attn_Backend:
         return NVTE_Fused_Attn_Backend.NVTE_No_Backend
 
@@ -455,7 +457,7 @@ class ReferenceBackend(TEFLBackendBase):
         self,
         input: torch.Tensor,
         dropout_probability: float,
-        out: Optional[torch.Tensor],
+        out: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         return dropout_fwd_torch(input, dropout_probability, out)
 
@@ -464,7 +466,7 @@ class ReferenceBackend(TEFLBackendBase):
         grad_output: torch.Tensor,
         mask: torch.Tensor,
         dropout_probability: float,
-        grad_input: Optional[torch.Tensor],
+        grad_input: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         return dropout_bwd_torch(grad_output, mask, dropout_probability, grad_input)
 
@@ -487,6 +489,17 @@ class ReferenceBackend(TEFLBackendBase):
         scale: float,
     ) -> None:
         return multi_tensor_scale_torch(chunk_size, noop_flag, tensor_lists, scale)
+
+    def multi_tensor_scale_tensor(
+        self,
+        chunk_size: int,
+        noop_flag: torch.Tensor,
+        tensor_lists: List[List[torch.Tensor]],
+        scale: torch.Tensor,
+    ) -> None:
+        # Reuse multi_tensor_scale by converting tensor scale to float
+        scale_value = scale.item()
+        return multi_tensor_scale_torch(chunk_size, noop_flag, tensor_lists, scale_value)
 
     def multi_tensor_l2norm(
         self,

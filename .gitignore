@@ -1,3 +1,4 @@
+.venv
 *.o
 *.swp
 *.ii
@@ -44,3 +45,4 @@ artifacts/
 transformer_engine/plugin/core/_build_config.py
 # Mac OS
 .DS_Store
+.claude/
