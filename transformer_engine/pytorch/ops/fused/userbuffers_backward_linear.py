@@ -10,7 +10,12 @@ import warnings
 
 import torch
 
-from transformer_engine_torch import CommOverlapType, bulk_overlap_ag_with_external_gemm
+from transformer_engine_torch import CommOverlapType
+
+try:
+    from transformer_engine_torch import bulk_overlap_ag_with_external_gemm
+except ImportError:
+    bulk_overlap_ag_with_external_gemm = None
 
 from transformer_engine import te_device_type
 
