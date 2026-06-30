@@ -252,30 +252,155 @@ def _reference_qkv_backward(
     return out
 
 
+class _TorchRoPEBackend:
+    @staticmethod
+    def fused_rope_forward(
+        input,
+        freqs,
+        start_positions,
+        qkv_format,
+        interleaved,
+        cu_seqlens,
+        cp_size,
+        cp_rank,
+    ):
+        return _reference_rope(
+            input,
+            freqs,
+            qkv_format,
+            interleaved,
+            cu_seqlens,
+            start_positions,
+            cp_size,
+            cp_rank,
+            False,
+        )
+
+    @staticmethod
+    def fused_rope_backward(
+        output_grads,
+        freqs,
+        start_positions,
+        qkv_format,
+        interleaved,
+        cu_seqlens,
+        cp_size,
+        cp_rank,
+    ):
+        return _reference_rope(
+            output_grads,
+            freqs,
+            qkv_format,
+            interleaved,
+            cu_seqlens,
+            start_positions,
+            cp_size,
+            cp_rank,
+            True,
+        )
+
+    @staticmethod
+    def fused_qkv_rope_forward(
+        qkv_input,
+        q_freqs,
+        k_freqs,
+        start_positions,
+        qkv_split_arg_list,
+        qkv_format,
+        interleaved,
+        cp_size,
+        cp_rank,
+    ):
+        return _reference_qkv_forward(
+            qkv_input,
+            q_freqs,
+            k_freqs,
+            start_positions,
+            qkv_split_arg_list,
+            qkv_format,
+            interleaved,
+            cp_size,
+            cp_rank,
+        )
+
+    @staticmethod
+    def fused_qkv_rope_backward(
+        q_grad_out,
+        k_grad_out,
+        v_grad_out,
+        q_freqs,
+        k_freqs,
+        qkv_split_arg_list,
+        qkv_format,
+        interleaved,
+        cp_size,
+        cp_rank,
+    ):
+        return _reference_qkv_backward(
+            q_grad_out,
+            k_grad_out,
+            v_grad_out,
+            q_freqs,
+            k_freqs,
+            qkv_split_arg_list,
+            qkv_format,
+            interleaved,
+            cp_size,
+            cp_rank,
+        )
+
+
 class FusedRoPETests(TestCase):
     def __init__(self, device="cpu"):
         super().__init__(
             "Fused RoPE",
-            "Test FlagOS Triton fused RoPE and fused QKV RoPE implementations",
+            "Test fused RoPE and fused QKV RoPE across CUDA, FlagOS, and torch reference",
         )
-        self.backends = [backend for backend in get_available_backends() if backend == "flagos"]
+        self.backends = get_available_backends()
+        if "torch" not in self.backends:
+            self.backends.append("torch")
+        self.backends = [
+            backend for backend in self.backends if backend in ("cuda", "flagos", "torch")
+        ]
         self.device = device
 
-    def _iter_runnable_backends(self):
+    def _get_backend(self, backend_name):
+        if backend_name == "torch":
+            return _TorchRoPEBackend()
+        if self.device == "cpu":
+            raise NotImplementedError("fused RoPE requires a GPU device")
+        if backend_name == "flagos" and not _triton_available():
+            raise NotImplementedError("Triton is not installed")
+        return get_backend(backend_name)
+
+    def _iter_backends(self):
         if not self.backends:
             self.skipped += 1
-            print("    skip: flagos backend is not registered")
+            print("    ⊘ no tested backend is registered")
             return
         for backend_name in self.backends:
-            if self.device == "cpu":
+            try:
+                yield backend_name, self._get_backend(backend_name)
+            except NotImplementedError as exc:
                 self.skipped += 1
-                print(f"    skip {backend_name}: fused RoPE requires a GPU device")
-                continue
-            if not _triton_available():
-                self.skipped += 1
-                print(f"    skip {backend_name}: Triton is not installed")
-                continue
-            yield backend_name, get_backend(backend_name)
+                print(f"    ⊘ {backend_name} ({exc})")
+
+    def _compare_to_cuda(self, outputs, backend_name, labels, msg):
+        if "cuda" not in outputs or backend_name not in outputs:
+            return
+
+        try:
+            for actual, expected, label in zip(outputs[backend_name], outputs["cuda"], labels):
+                self.assert_close(
+                    actual.float(),
+                    expected.float(),
+                    rtol=1e-4,
+                    atol=1e-4,
+                    msg=f"{msg} {label} mismatch between {backend_name} and cuda",
+                )
+            print(f"    ✓ {backend_name} matches cuda")
+        except AssertionError as exc:
+            print(f"    ✗ {backend_name} vs cuda: {exc}")
 
     def test_rope_sbhd_bshd_forward_backward(self):
         print("\n  Testing fused_rope_forward/backward for SBHD and BSHD")
@@ -286,6 +411,11 @@ class FusedRoPETests(TestCase):
         ]
 
         for qkv_format, shape, interleaved, cp_size, cp_rank, use_start in cases:
+            print(
+                f"\n  Testing fused_rope_forward/backward with {qkv_format.name}, "
+                f"interleaved={interleaved}, cp_size={cp_size}, "
+                f"start_positions={use_start}"
+            )
             d2 = 6
             freq_len = shape[0] if qkv_format == NVTE_QKV_Format.NVTE_SBHD else shape[1]
             freq_len = max(freq_len * cp_size + 3, 12)
@@ -313,7 +443,8 @@ class FusedRoPETests(TestCase):
                 grad, freqs, qkv_format, interleaved, None, start_positions, cp_size, cp_rank, True
             )
 
-            for backend_name, backend in self._iter_runnable_backends():
+            outputs = {}
+            for backend_name, backend in self._iter_backends():
                 try:
                     out = backend.fused_rope_forward(
                         tensor,
@@ -349,10 +480,28 @@ class FusedRoPETests(TestCase):
                         atol=1e-4,
                         msg=f"fused_rope_backward mismatch for {backend_name}",
                     )
-                    print(f"    ok {backend_name}: {qkv_format.name}, interleaved={interleaved}")
+                    outputs[backend_name] = (out, dx)
+                    print(f"    ✓ {backend_name}")
+                except NotImplementedError as exc:
+                    self.skipped += 1
+                    print(f"    ⊘ {backend_name} ({exc})")
+                except RuntimeError as exc:
+                    if "is not available" in str(exc):
+                        self.skipped += 1
+                        print(f"    ⊘ {backend_name} ({exc})")
+                    else:
+                        self.failed += 1
+                        print(f"    ✗ {backend_name}: {exc}")
                 except Exception as exc:
                     self.failed += 1
-                    print(f"    fail {backend_name}: {exc}")
+                    print(f"    ✗ {backend_name}: {exc}")
+
+            self._compare_to_cuda(
+                outputs,
+                "flagos",
+                ("forward", "backward"),
+                f"{qkv_format.name} fused_rope",
+            )
 
     def test_rope_thd_forward_backward(self):
         print("\n  Testing fused_rope_forward/backward for THD")
@@ -362,6 +511,11 @@ class FusedRoPETests(TestCase):
         ]
 
         for cu_cpu, interleaved, cp_size, cp_rank, use_start in cases:
+            print(
+                "\n  Testing fused_rope_forward/backward with NVTE_THD, "
+                f"interleaved={interleaved}, cp_size={cp_size}, "
+                f"start_positions={use_start}"
+            )
             cu_seqlens = cu_cpu.to(self.device)
             local_cu = cu_cpu // cp_size
             total_t = int(local_cu[-1].item())
@@ -397,7 +551,8 @@ class FusedRoPETests(TestCase):
                 True,
             )
 
-            for backend_name, backend in self._iter_runnable_backends():
+            outputs = {}
+            for backend_name, backend in self._iter_backends():
                 try:
                     out = backend.fused_rope_forward(
                         tensor,
@@ -433,10 +588,28 @@ class FusedRoPETests(TestCase):
                         atol=1e-4,
                         msg=f"THD fused_rope_backward mismatch for {backend_name}",
                     )
-                    print(f"    ok {backend_name}: THD, interleaved={interleaved}")
+                    outputs[backend_name] = (out, dx)
+                    print(f"    ✓ {backend_name}")
+                except NotImplementedError as exc:
+                    self.skipped += 1
+                    print(f"    ⊘ {backend_name} ({exc})")
+                except RuntimeError as exc:
+                    if "is not available" in str(exc):
+                        self.skipped += 1
+                        print(f"    ⊘ {backend_name} ({exc})")
+                    else:
+                        self.failed += 1
+                        print(f"    ✗ {backend_name}: {exc}")
                 except Exception as exc:
                     self.failed += 1
-                    print(f"    fail {backend_name}: {exc}")
+                    print(f"    ✗ {backend_name}: {exc}")
+
+            self._compare_to_cuda(
+                outputs,
+                "flagos",
+                ("forward", "backward"),
+                "THD fused_rope",
+            )
 
     def test_qkv_rope_forward_backward(self):
         print("\n  Testing fused_qkv_rope_forward/backward")
@@ -447,6 +620,11 @@ class FusedRoPETests(TestCase):
         qkv_split_arg_list = [16, 8, 8]
 
         for qkv_format, shape, interleaved, cp_size, cp_rank, use_start in cases:
+            print(
+                f"\n  Testing fused_qkv_rope_forward/backward with {qkv_format.name}, "
+                f"interleaved={interleaved}, cp_size={cp_size}, "
+                f"start_positions={use_start}"
+            )
             d2 = 6
             seq_len = shape[0] if qkv_format == NVTE_QKV_Format.NVTE_SBHD else shape[1]
             freq_len = max(seq_len * cp_size + 3, 12)
@@ -486,7 +664,8 @@ class FusedRoPETests(TestCase):
                 cp_rank,
             )
 
-            for backend_name, backend in self._iter_runnable_backends():
+            outputs = {}
+            for backend_name, backend in self._iter_backends():
                 try:
                     q_out, k_out, v_out = backend.fused_qkv_rope_forward(
                         qkv,
@@ -539,16 +718,34 @@ class FusedRoPETests(TestCase):
                         atol=1e-4,
                         msg=f"fused_qkv_rope_backward mismatch for {backend_name}",
                     )
-                    print(f"    ok {backend_name}: {qkv_format.name}, interleaved={interleaved}")
+                    outputs[backend_name] = (q_out, k_out, v_out, dqkv)
+                    print(f"    ✓ {backend_name}")
+                except NotImplementedError as exc:
+                    self.skipped += 1
+                    print(f"    ⊘ {backend_name} ({exc})")
+                except RuntimeError as exc:
+                    if "is not available" in str(exc):
+                        self.skipped += 1
+                        print(f"    ⊘ {backend_name} ({exc})")
+                    else:
+                        self.failed += 1
+                        print(f"    ✗ {backend_name}: {exc}")
                 except Exception as exc:
                     self.failed += 1
-                    print(f"    fail {backend_name}: {exc}")
+                    print(f"    ✗ {backend_name}: {exc}")
+
+            self._compare_to_cuda(
+                outputs,
+                "flagos",
+                ("Q forward", "K forward", "V forward", "backward"),
+                f"{qkv_format.name} fused_qkv_rope",
+            )
 
     def run_all_tests(self):
         print("\n" + "=" * 60)
         print("Testing Fused RoPE")
         print("=" * 60)
-        print(f"Available tested backends: {', '.join(self.backends) or 'none'}")
+        print(f"Available backends: {', '.join(self.backends) or 'none'}")
 
         self.test_rope_sbhd_bshd_forward_backward()
         self.test_rope_thd_forward_backward()
