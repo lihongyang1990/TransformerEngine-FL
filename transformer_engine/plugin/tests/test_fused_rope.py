@@ -241,8 +241,8 @@ def _reference_qkv_backward(
                 k_start = q_split
                 for row_offset in range(0, k_split, d):
                     k_slice = k_flat[h_id * k_split + row_offset : h_id * k_split + row_offset + d]
-                    dst[h_id, k_start + row_offset : k_start + row_offset + d] = (
-                        _apply_rope_slice(k_slice, k_freq_flat[pos], interleaved, True)
+                    dst[h_id, k_start + row_offset : k_start + row_offset + d] = _apply_rope_slice(
+                        k_slice, k_freq_flat[pos], interleaved, True
                     )
                 v_start = q_split + k_split
                 dst[h_id, v_start : v_start + v_split] = v_flat[
@@ -336,11 +336,17 @@ class FusedRoPETests(TestCase):
                         cp_rank,
                     )
                     self.assert_close(
-                        out.float(), ref_fwd.float(), rtol=1e-4, atol=1e-4,
+                        out.float(),
+                        ref_fwd.float(),
+                        rtol=1e-4,
+                        atol=1e-4,
                         msg=f"fused_rope_forward mismatch for {backend_name}",
                     )
                     self.assert_close(
-                        dx.float(), ref_bwd.float(), rtol=1e-4, atol=1e-4,
+                        dx.float(),
+                        ref_bwd.float(),
+                        rtol=1e-4,
+                        atol=1e-4,
                         msg=f"fused_rope_backward mismatch for {backend_name}",
                     )
                     print(f"    ok {backend_name}: {qkv_format.name}, interleaved={interleaved}")
@@ -414,11 +420,17 @@ class FusedRoPETests(TestCase):
                         cp_rank,
                     )
                     self.assert_close(
-                        out.float(), ref_fwd.float(), rtol=1e-4, atol=1e-4,
+                        out.float(),
+                        ref_fwd.float(),
+                        rtol=1e-4,
+                        atol=1e-4,
                         msg=f"THD fused_rope_forward mismatch for {backend_name}",
                     )
                     self.assert_close(
-                        dx.float(), ref_bwd.float(), rtol=1e-4, atol=1e-4,
+                        dx.float(),
+                        ref_bwd.float(),
+                        rtol=1e-4,
+                        atol=1e-4,
                         msg=f"THD fused_rope_backward mismatch for {backend_name}",
                     )
                     print(f"    ok {backend_name}: THD, interleaved={interleaved}")
@@ -500,19 +512,31 @@ class FusedRoPETests(TestCase):
                         cp_rank,
                     )
                     self.assert_close(
-                        q_out.float(), ref_q.float(), rtol=1e-4, atol=1e-4,
+                        q_out.float(),
+                        ref_q.float(),
+                        rtol=1e-4,
+                        atol=1e-4,
                         msg=f"fused_qkv_rope_forward Q mismatch for {backend_name}",
                     )
                     self.assert_close(
-                        k_out.float(), ref_k.float(), rtol=1e-4, atol=1e-4,
+                        k_out.float(),
+                        ref_k.float(),
+                        rtol=1e-4,
+                        atol=1e-4,
                         msg=f"fused_qkv_rope_forward K mismatch for {backend_name}",
                     )
                     self.assert_close(
-                        v_out.float(), ref_v.float(), rtol=1e-4, atol=1e-4,
+                        v_out.float(),
+                        ref_v.float(),
+                        rtol=1e-4,
+                        atol=1e-4,
                         msg=f"fused_qkv_rope_forward V mismatch for {backend_name}",
                     )
                     self.assert_close(
-                        dqkv.float(), ref_bwd.float(), rtol=1e-4, atol=1e-4,
+                        dqkv.float(),
+                        ref_bwd.float(),
+                        rtol=1e-4,
+                        atol=1e-4,
                         msg=f"fused_qkv_rope_backward mismatch for {backend_name}",
                     )
                     print(f"    ok {backend_name}: {qkv_format.name}, interleaved={interleaved}")

@@ -192,9 +192,9 @@ if triton is not None:
         sin_values = (
             tl.sin(tl.load(freqs + freq_base + sin_d, mask=freq_mask, other=0.0)) * sin_sign
         )
-        rotary_values = src_values * cos_values[None, :] + rot_values * rot_sign * sin_values[
-            None, :
-        ]
+        rotary_values = (
+            src_values * cos_values[None, :] + rot_values * rot_sign * sin_values[None, :]
+        )
         out_values = tl.where(mask_d2[None, :], rotary_values, out_values)
 
         tl.store(dst + dst_offsets, out_values, mask=mask & valid_token)
@@ -318,9 +318,9 @@ if triton is not None:
                 src_row_length = total_d
                 dst_row_offset = row_offset
             src_offsets = src_base + offs_h[:, None] * src_row_length + component_d[None, :]
-            rot_offsets = src_base + offs_h[:, None] * src_row_length + (
-                row_offset + rot_d
-            )[None, :]
+            rot_offsets = (
+                src_base + offs_h[:, None] * src_row_length + (row_offset + rot_d)[None, :]
+            )
             dst_offsets = dst_base + offs_h[:, None] * total_d + dst_row_offset + offs_d[None, :]
             if not IS_BACKWARD:
                 dst_offsets = dst_base + offs_h[:, None] * Q_SPLIT + component_d[None, :]
@@ -364,9 +364,9 @@ if triton is not None:
                 src_offsets = (
                     input_base + offs_h[:, None] * total_d + input_row_offset + offs_d[None, :]
                 )
-                rot_offsets = input_base + offs_h[:, None] * total_d + (
-                    input_row_offset + rot_d
-                )[None, :]
+                rot_offsets = (
+                    input_base + offs_h[:, None] * total_d + (input_row_offset + rot_d)[None, :]
+                )
                 dst_offsets = k_base + offs_h[:, None] * K_SPLIT + component_d[None, :]
                 values = tl.load(qkv_input + src_offsets, mask=mask, other=0.0).to(tl.float32)
                 rot_values = tl.load(qkv_input + rot_offsets, mask=mask_rotary, other=0.0).to(
@@ -380,15 +380,15 @@ if triton is not None:
         mask = mask_h[:, None] & (component_d[None, :] < V_SPLIT) & mask_d[None, :]
         if IS_BACKWARD:
             src_offsets = v_base + offs_h[:, None] * V_SPLIT + component_d[None, :]
-            dst_offsets = input_base + offs_h[:, None] * total_d + Q_SPLIT + K_SPLIT + offs_d[
-                None, :
-            ]
+            dst_offsets = (
+                input_base + offs_h[:, None] * total_d + Q_SPLIT + K_SPLIT + offs_d[None, :]
+            )
             values = tl.load(v_out + src_offsets, mask=mask, other=0.0)
             tl.store(qkv_grad_input + dst_offsets, values, mask=mask)
         else:
-            src_offsets = input_base + offs_h[:, None] * total_d + Q_SPLIT + K_SPLIT + offs_d[
-                None, :
-            ]
+            src_offsets = (
+                input_base + offs_h[:, None] * total_d + Q_SPLIT + K_SPLIT + offs_d[None, :]
+            )
             dst_offsets = v_base + offs_h[:, None] * V_SPLIT + component_d[None, :]
             values = tl.load(qkv_input + src_offsets, mask=mask, other=0.0)
             tl.store(v_out + dst_offsets, values, mask=mask)
